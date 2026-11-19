@@ -449,6 +449,8 @@ fn layouts_fit() {
         (1280.0, 800.0, false),
         (1600.0, 1000.0, true),
         (1920.0, 1080.0, false),
+        (2560.0, 1440.0, false),
+        (2560.0, 1440.0, true),
     ];
     let mut failures = Vec::new();
     for (w, h, four) in sizes {

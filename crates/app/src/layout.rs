@@ -23,8 +23,24 @@ pub const LIB_MIN: f32 = 170.0;
 /// (in full it needs its beat ring, its pads' five tabs and its pitch fader side by side).
 pub const LAYERED_BELOW: f32 = 1400.0;
 pub const FULL_CARD: f32 = 480.0;
-/// The mixer's width with two channels and four.
-pub const MIXER_W: [f32; 2] = [340.0, 420.0];
+/// A channel strip's and the master's widths in a window `w` wide: the mixer grows with the
+/// window as the decks do (its knobs with it), from what it needs to a half again.
+pub fn mixer_dims(w: f32, four: bool) -> (f32, f32) {
+    match four {
+        false => (
+            (w * 0.085).clamp(116.0, 172.0),
+            (w * 0.05).clamp(68.0, 96.0),
+        ),
+        true => ((w * 0.056).clamp(82.0, 124.0), (w * 0.04).clamp(60.0, 84.0)),
+    }
+}
+
+/// The mixer's width in a window `w` wide: its strips and the master, the gaps between.
+pub fn mixer_w(w: f32, four: bool) -> f32 {
+    let (strip, master) = mixer_dims(w, four);
+    let n = if four { 4.0 } else { 2.0 };
+    n * strip + master + n * 8.0
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LibView {
@@ -97,7 +113,7 @@ pub fn side_range() -> (f32, f32) {
 pub fn fit(l: &Layout, w: f32, h: f32, rows: usize, four: bool, learning: bool) -> Sizes {
     let layered = four && w < LAYERED_BELOW;
     let cards = if four && !layered { 4.0 } else { 2.0 };
-    let mixer = MIXER_W[four as usize];
+    let mixer = mixer_w(w, four);
     let card = (w - mixer - (cards + 2.0) * GAP) / cards;
     let compact = four || card < FULL_CARD;
     let n = rows.max(1) as f32;

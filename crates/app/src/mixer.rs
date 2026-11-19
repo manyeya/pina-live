@@ -20,6 +20,14 @@ use crate::{
 /// The crossfader card's height.
 const XF_H: f32 = 42.0;
 
+/// The master's knob and the headphones' knobs, sized to its strip `w` wide.
+fn master_knobs(w: f32, compact: bool) -> (f32, f32) {
+    match compact {
+        true => ((w * 0.46).clamp(28.0, 38.0), (w * 0.36).clamp(22.0, 28.0)),
+        false => ((w * 0.5).clamp(34.0, 46.0), (w * 0.38).clamp(26.0, 34.0)),
+    }
+}
+
 /// A channel's knobs' sizes: trim, each EQ band, the filter.
 #[derive(Clone, Copy, Debug)]
 pub struct Knobs {
@@ -116,8 +124,13 @@ impl Live {
             true => 16.0 + 20.0 + 3.0 + 12.0 + 20.0 + 2.0 + 14.0 + 9.0 * 3.0,
             false => 16.0 + 20.0 + 3.0 + 12.0 + 22.0 + 2.0 + 14.0 + 9.0 * 5.0,
         };
+        let (sw, mw) = crate::layout::mixer_dims(self.view.0, self.four);
         let tiers: &[(f32, f32, f32)] = match (compact, self.four) {
             (false, _) => &[
+                (40., 60., 66.),
+                (38., 56., 62.),
+                (36., 52., 58.),
+                (34., 49., 54.),
                 (32., 46., 50.),
                 (30., 42., 46.),
                 (28., 38., 42.),
@@ -125,6 +138,8 @@ impl Live {
                 (24., 30., 34.),
             ],
             (true, false) => &[
+                (32., 46., 50.),
+                (30., 42., 46.),
                 (28., 38., 42.),
                 (26., 34., 38.),
                 (24., 30., 34.),
@@ -132,6 +147,9 @@ impl Live {
                 (20., 24., 26.),
             ],
             (true, true) => &[
+                (32., 44., 48.),
+                (30., 40., 44.),
+                (28., 36., 40.),
                 (26., 32., 34.),
                 (24., 30., 32.),
                 (22., 26., 28.),
@@ -139,7 +157,15 @@ impl Live {
             ],
         };
         let least = if compact { 64.0 } else { 80.0 };
-        let fits = |t: &(f32, f32, f32)| room - fixed - (t.0 + 3.0 * t.1 + t.2) >= least;
+        // As big as the strip's height leaves its fader its throw, and its width the knobs room
+        // beside their names (and, full size, their scales' ends).
+        let (eq_cap, filter_cap) = match compact {
+            true => (sw - 50.0, sw - 48.0),
+            false => (sw - 70.0, sw - 66.0),
+        };
+        let fits = |t: &(f32, f32, f32)| {
+            room - fixed - (t.0 + 3.0 * t.1 + t.2) >= least && t.1 <= eq_cap && t.2 <= filter_cap
+        };
         let &(trim, eq, filter) = tiers
             .iter()
             .find(|t| fits(t))
@@ -147,12 +173,13 @@ impl Live {
         // The master's strip but its meter: padding, its name, knob and level, two rules, its
         // peak and limiter lines, the headphones' panel (padding, border, its name, two knobs,
         // the mix's ends, the level, its gaps), and the gaps between.
+        let (mk, pk) = master_knobs(mw, compact);
         let phones = |k: f32| 8.0 + 2.0 + 12.0 + 2.0 * k + 9.0 + 12.0 + 4.0 * 3.0;
         let full = match compact {
             // (Plus a hair each for type's rounding, measured, so it ends level with the
             // channels.)
-            true => 20.0 + 12.0 + 28.0 + 12.0 + 2.0 + 24.0 + phones(22.0) + 8.0 * 4.0 + 2.0,
-            false => 20.0 + 12.0 + 34.0 + 12.0 + 2.0 + 24.0 + phones(26.0) + 8.0 * 6.0 + 1.0,
+            true => 20.0 + 12.0 + mk + 12.0 + 2.0 + 24.0 + phones(pk) + 8.0 * 4.0 + 2.0,
+            false => 20.0 + 12.0 + mk + 12.0 + 2.0 + 24.0 + phones(pk) + 8.0 * 6.0 + 1.0,
         };
         // Short of room, the master's peak line goes (its meter still holds the peak).
         let tight = room - full < 56.0;
@@ -176,7 +203,7 @@ impl Live {
         let compact = self.narrow;
         let four = self.four;
         let color = DECK_COLORS[ch];
-        let w = if four { 82.0 } else { 116.0 };
+        let w = crate::layout::mixer_dims(self.view.0, four).0;
         let (fh, _, k, _) = self.mixer_budget();
         // A knob's row: its name and what it reads (compact, what it reads while it's turned).
         // `rw` its width: the strip's less a margin each side, or less the EQ panel's too.
@@ -528,7 +555,8 @@ impl Live {
     fn master_card(&self, cx: &mut Context<Self>) -> Div {
         let compact = self.narrow;
         let (_, mh, _, tight) = self.mixer_budget();
-        let w = if self.four { 60. } else { 68. };
+        let w = crate::layout::mixer_dims(self.view.0, self.four).1;
+        let (mk, pk) = master_knobs(w, compact);
         let segs = if compact { 16 } else { 24 };
         let rule = || div().w(px(w - 16.0)).h(px(1.)).flex_none().bg(rgb(LINE));
         // A readout on a line of its own, as wide as what it says (measured by the tests at
@@ -565,7 +593,7 @@ impl Live {
             _ => ("−∞".to_string(), TEXT_4),
         };
         let limiting = self.reduction > 0.5;
-        let pk = if compact { 22. } else { 26. };
+
         div()
             .relative()
             .w(px(w))
@@ -581,7 +609,7 @@ impl Live {
             .border_color(rgb(LINE))
             .child(probe(&self.probes, "mixer.strips.master"))
             .child(caption("MASTER"))
-            .child(self.knob(Ctl::Master, "", TEXT, if compact { 28. } else { 34. }, cx))
+            .child(self.knob(Ctl::Master, "", TEXT, mk, cx))
             .child(line("level", level, level_c))
             .child(rule())
             // What goes out: the limiter's reduction down from the top, the two sides, the scale.
