@@ -312,15 +312,12 @@ impl Live {
     /// analysed; the first onto the first empty deck. Whether any came.
     #[cfg(target_family = "wasm")]
     fn take_web_files(&mut self, cx: &mut Context<Self>) -> bool {
-        let files = crate::web::take_arrived();
         let mut ids = Vec::new();
-        for (name, bytes) in files {
-            let path = std::path::PathBuf::from("/Pina Live").join(&name);
-            if !library::is_audio(&path) {
-                continue;
+        for name in crate::web::take_arrived() {
+            let path = crate::web::path_of(&name);
+            if library::is_audio(&path) {
+                ids.push(self.lib.add_file(&path));
             }
-            pina_live_engine::memfs::put(&path, bytes);
-            ids.push(self.lib.add_file(&path));
         }
         if ids.is_empty() {
             return false;
@@ -778,10 +775,14 @@ impl Live {
         }
         let rate = self.rate;
         let path = track.path.clone();
+        #[cfg(not(target_family = "wasm"))]
         let read = cx.background_spawn(async move {
             let audio = Audio::load(&path, rate);
             (audio, library::load_wave(id))
         });
+        // A browser's background is a worker (web.rs): its page has the one thread.
+        #[cfg(target_family = "wasm")]
+        let read = async move { (crate::web::decode(path, rate).await, library::load_wave(id)) };
         cx.spawn(async move |this, cx| {
             let (audio, wave) = read.await;
             this.update(cx, |live, cx| live.loaded(deck, id, audio, wave, cx))
@@ -1185,7 +1186,10 @@ impl Live {
         });
         let (path, rate) = (t.path.clone(), self.rate);
         self.preview = Some((id, Instant::now()));
+        #[cfg(not(target_family = "wasm"))]
         let read = cx.background_spawn(async move { Audio::load(&path, rate) });
+        #[cfg(target_family = "wasm")]
+        let read = crate::web::decode(path, rate);
         cx.spawn(async move |this, cx| {
             let audio = read.await;
             this.update(cx, |live, cx| {

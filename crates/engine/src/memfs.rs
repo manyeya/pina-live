@@ -20,6 +20,13 @@ pub fn put(path: &Path, bytes: Vec<u8>) {
     }
 }
 
+/// The file at `path` let go.
+pub fn forget(path: &Path) {
+    if let Ok(mut f) = files().lock() {
+        f.remove(path);
+    }
+}
+
 /// The file at `path`, if it's held here.
 pub fn get(path: &Path) -> Option<Arc<Vec<u8>>> {
     files().lock().ok()?.get(path).cloned()

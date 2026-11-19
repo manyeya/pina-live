@@ -44,6 +44,10 @@ fn main() {}
 #[cfg(target_family = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(start)]
 pub fn start() {
+    // In a Web Worker (web/worker.js) there's no page: it only answers what's asked (web.rs).
+    if web_sys::window().is_none() {
+        return;
+    }
     gpui_platform::web_init();
     web::listen();
     run(gpui_platform::single_threaded_web());

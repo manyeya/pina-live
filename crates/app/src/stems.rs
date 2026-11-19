@@ -136,6 +136,11 @@ impl Live {
         if self.separating.is_some() {
             return;
         }
+        if cfg!(target_family = "wasm") {
+            self.stem_note = Some("Stems are parted by the desktop app, for Mac or Windows".into());
+            cx.notify();
+            return;
+        }
         let Some(track) = self.lib.get(id) else {
             return;
         };

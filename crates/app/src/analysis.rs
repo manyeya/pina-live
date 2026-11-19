@@ -20,6 +20,9 @@ pub type Found = (u64, Result<(Analysis, Tags, Wave), String>);
 pub struct Analyzer {
     #[cfg(target_family = "wasm")]
     tx: Sender<Found>,
+    /// In a browser: the track its worker's analysing.
+    #[cfg(target_family = "wasm")]
+    asking: Option<u64>,
     queue: Arc<Mutex<VecDeque<(u64, PathBuf)>>>,
     rx: Receiver<Found>,
     /// Queued or being analysed.
@@ -35,7 +38,7 @@ impl Analyzer {
         let queue: Arc<Mutex<VecDeque<(u64, PathBuf)>>> = Arc::default();
         let (tx, rx) = channel();
         let stop = Arc::new(AtomicBool::new(false));
-        // A browser has no threads: there, `poll` analyses a track itself, one a frame.
+        // A browser's page has one thread: there, `poll` hands a track at a time to a worker.
         let workers = if cfg!(target_family = "wasm") {
             0
         } else {
@@ -61,6 +64,8 @@ impl Analyzer {
         Analyzer {
             #[cfg(target_family = "wasm")]
             tx,
+            #[cfg(target_family = "wasm")]
+            asking: None,
             queue,
             rx,
             pending: HashSet::new(),
@@ -102,13 +107,20 @@ impl Analyzer {
     /// What's been found since last asked.
     pub fn poll(&mut self) -> Vec<Found> {
         #[cfg(target_family = "wasm")]
+        if self.asking.is_none()
+            && let Some((id, path)) = self.queue.lock().ok().and_then(|mut q| q.pop_front())
         {
-            let next = self.queue.lock().ok().and_then(|mut q| q.pop_front());
-            if let Some((id, path)) = next {
-                let _ = self.tx.send((id, analyze(&path)));
-            }
+            self.asking = Some(id);
+            let tx = self.tx.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let _ = tx.send((id, crate::web::analyze(path).await));
+            });
         }
         let found: Vec<Found> = self.rx.try_iter().collect();
+        #[cfg(target_family = "wasm")]
+        if found.iter().any(|(id, _)| Some(*id) == self.asking) {
+            self.asking = None;
+        }
         for (id, _) in &found {
             if self.pending.remove(id) {
                 self.done += 1;

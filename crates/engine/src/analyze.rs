@@ -268,6 +268,28 @@ impl Wave {
     }
 }
 
+/// What `analyze` found, as bytes: the analysis and tags as JSON (as the library keeps them), then
+/// the waveform (as it's cached). A web build's worker hands it to the page this way.
+pub fn pack((analysis, tags, wave): &(Analysis, Tags, Wave)) -> Vec<u8> {
+    let json = serde_json::to_vec(&(analysis, tags)).unwrap_or_default();
+    let mut out = (json.len() as u32).to_le_bytes().to_vec();
+    out.extend(json);
+    out.extend(wave.to_bytes());
+    out
+}
+
+pub fn unpack(b: &[u8]) -> Result<(Analysis, Tags, Wave), String> {
+    let n = b
+        .get(..4)
+        .and_then(|n| n.try_into().ok())
+        .map(u32::from_le_bytes)
+        .ok_or("nothing found")? as usize;
+    let json = b.get(4..4 + n).ok_or("cut short")?;
+    let (analysis, tags) = serde_json::from_slice(json).map_err(|e| e.to_string())?;
+    let wave = Wave::from_bytes(&b[4 + n..]).ok_or("no waveform")?;
+    Ok((analysis, tags, wave))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,5 +337,37 @@ mod tests {
             .fold(0f32, f32::max);
         assert!((top - 1.0).abs() < 1e-3);
         assert_eq!(Wave::from_bytes(&w.to_bytes()), Some(w));
+    }
+
+    #[test]
+    fn what_is_found_survives_being_handed_over() {
+        let x: Vec<f32> = (0..48_000).map(|i| (i as f32 * 0.01).sin() * 0.5).collect();
+        let found = (
+            Analysis {
+                version: VERSION,
+                seconds: 1.0,
+                grid: None,
+                steady: 0.8,
+                key: "A minor".into(),
+                camelot: "8A".into(),
+                lufs: -9.5,
+                peak_db: -0.3,
+                phrases: vec![Phrase {
+                    name: "Drop".into(),
+                    label: "A".into(),
+                    start: 0.0,
+                    end: 1.0,
+                    energy: 0.9,
+                }],
+                genre: Some("House".into()),
+            },
+            Tags {
+                title: "T".into(),
+                ..Tags::default()
+            },
+            Wave::of(&x, &x, 48_000.0),
+        );
+        assert_eq!(unpack(&pack(&found)), Ok(found));
+        assert!(unpack(&[1, 0]).is_err());
     }
 }

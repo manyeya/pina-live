@@ -330,21 +330,24 @@ impl Live {
                     .child(line("Keylock on as tracks load", toggle(s.keylock, |s| s.keylock = !s.keylock, cx)))
                     .child(line("Don't load onto a playing deck", toggle(s.load_lock, |s| s.load_lock = !s.load_lock, cx)))
                     .child(line("A new track's channel starts clean (EQ, filter, effects)", toggle(s.reset_on_load, |s| s.reset_on_load = !s.reset_on_load, cx)))
-                    .child(section("STEMS"))
-                    .child(line("Part each track into stems as it loads", toggle(s.part_on_load, |s| s.part_on_load = !s.part_on_load, cx)))
-                    .child(line("Stem models", {
-                        let n = pina_engine::separate::models(&pina_engine::separate::folder()).0.len();
-                        div().flex().items_center().gap(px(10.))
-                            .child(div().text_color(rgb(TEXT_3)).child(match n { 0 => "none yet".to_string(), 1 => "1 installed".into(), n => format!("{n} installed") }))
-                            .child(button("Get models…", n == 0).h(px(24.)).on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(|live, _, _, cx| {
-                                    live.show_settings = false;
-                                    live.show_models = true;
-                                    cx.notify();
-                                }),
-                            ))
-                    }))
+                    // Parting needs models on disk and threads: the desktop app's.
+                    .when(!cfg!(target_family = "wasm"), |d| {
+                        d.child(section("STEMS"))
+                            .child(line("Part each track into stems as it loads", toggle(s.part_on_load, |s| s.part_on_load = !s.part_on_load, cx)))
+                            .child(line("Stem models", {
+                            let n = pina_engine::separate::models(&pina_engine::separate::folder()).0.len();
+                            div().flex().items_center().gap(px(10.))
+                                    .child(div().text_color(rgb(TEXT_3)).child(match n { 0 => "none yet".to_string(), 1 => "1 installed".into(), n => format!("{n} installed") }))
+                                    .child(button("Get models…", n == 0).h(px(24.)).on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(|live, _, _, cx| {
+                                        live.show_settings = false;
+                                        live.show_models = true;
+                                        cx.notify();
+                                    }),
+                                ))
+                        }))
+                    })
                     .child(section("CONTROLLERS"))
                     .child(self.midi_settings(cx))
                     .child(section("LIBRARY FOLDERS"))

@@ -79,8 +79,9 @@ Every push to `main` builds all three (Actions; a `vX.Y.Z` tag puts them on its 
   of the same.
 - **Web**: Pina Live in a browser, at <https://manyeya.github.io/pina-live/>. Drop your tracks onto
   the page (they stay in it, never uploaded) or try the demo songs. It's the same app, built to
-  WebAssembly: the keylock is `wsola.rs` (Signalsmith is C++), tracks are read from memory
-  (`memfs.rs`), and stems, plugins and recording are the desktop's. To build it:
+  WebAssembly: the keylock is `wsola.rs` (Signalsmith is C++), tracks are decoded and analysed
+  in Web Workers (`web.rs`, `web/worker.js`) so the page never stops for them, and stems,
+  plugins and recording are the desktop's. To build it:
 
 ```sh
 cargo build --release --target wasm32-unknown-unknown -p pina-live
