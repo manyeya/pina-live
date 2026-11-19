@@ -962,14 +962,6 @@ impl Live {
                     .items_center()
                     .justify_center()
                     .gap(px(3.))
-                    .child(
-                        div()
-                            .mr(px(6.))
-                            .text_size(px(8.))
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(rgb(TEXT_4))
-                            .child("CURVE"),
-                    )
                     .child(curve_pick(0.0, "SMOOTH", cx))
                     .child(curve_pick(0.5, "BLEND", cx))
                     .child(curve_pick(1.0, "CUT", cx)),
