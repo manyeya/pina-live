@@ -197,7 +197,7 @@ pub fn mixes_with(t: &Track, bpm: f64, key: &str) -> bool {
 
 /// A key's place on the Camelot wheel as a hue (its neighbours, the keys that mix with it,
 /// the hues next to it), the major (B) a shade lighter than the minor (A).
-fn key_hue(k: &str) -> Option<gpui::Hsla> {
+pub fn key_hue(k: &str) -> Option<gpui::Hsla> {
     let i = k.len().checked_sub(1)?;
     let (n, l) = k.split_at(i);
     let n: f32 = n.parse().ok().filter(|n| (1.0..=12.0).contains(n))?;

@@ -789,3 +789,23 @@ fn panels_resize_and_the_library_shuts(cx: &mut gpui::TestAppContext) {
     cx.simulate_keystrokes("escape");
     assert_eq!(lib(&live, cx), LibView::Open);
 }
+
+/// A semitone is seven places round the Camelot wheel: MATCH's arithmetic.
+#[test]
+fn keys_move_round_the_wheel_by_semitones() {
+    use crate::decks::camelot_shift;
+    assert_eq!(camelot_shift("8A", 1).as_deref(), Some("3A"));
+    assert_eq!(camelot_shift("7B", -1).as_deref(), Some("12B"));
+    assert_eq!(camelot_shift("12A", 12).as_deref(), Some("12A"));
+    assert_eq!(camelot_shift("??", 1), None);
+    // 7B against 8A: the fewest semitones that make it mix are five down, to 8B (8A's own
+    // relative major).
+    let mixes = |k: &str| pina_live_engine::analyze::compatible(k, "8A");
+    let best = [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6]
+        .into_iter()
+        .find(|&s| camelot_shift("7B", s).is_some_and(|k| mixes(&k)));
+    assert_eq!(
+        best.and_then(|s| camelot_shift("7B", s)).as_deref(),
+        Some("8B")
+    );
+}

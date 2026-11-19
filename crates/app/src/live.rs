@@ -276,6 +276,9 @@ pub struct Live {
     pub reduction: f32,
     /// When the status last came in, to move the waveforms on smoothly between.
     status_at: Instant,
+    /// When the window opened, and whether blinking lights are lit this half-second.
+    epoch: Instant,
+    pub blink: bool,
     focus: FocusHandle,
 }
 
@@ -530,6 +533,8 @@ impl Live {
             clips: [0; DECKS + 1],
             reduction: 0.0,
             status_at: Instant::now(),
+            epoch: Instant::now(),
+            blink: true,
             focus: cx.focus_handle(),
         };
         // The mixer as drawn, sent: decks A and C on the crossfader's left, B and D its right.
@@ -605,6 +610,12 @@ impl Live {
     /// The status in, analysis picked up, cues kept, the library saved now and then.
     pub fn tick(&mut self, cx: &mut Context<Self>) {
         let mut changed = self.run_offline();
+        // Blinking lights turn over every 400 ms, played or not.
+        let blink = (self.epoch.elapsed().as_millis() / 400) % 2 == 0;
+        if blink != self.blink {
+            self.blink = blink;
+            changed = true;
+        }
         if self.remote.poll() {
             self.status_at = Instant::now();
             changed = true;

@@ -7,6 +7,7 @@ mod crates;
 mod decks;
 mod detail;
 mod fxbar;
+mod hw;
 mod keys;
 mod layout;
 mod live;

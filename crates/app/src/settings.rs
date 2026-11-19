@@ -218,11 +218,17 @@ impl Live {
         }
         let curve = s.xf_curve;
         let xf = tray()
-            .child(seg("Smooth", curve < 0.5, 24.0).on_mouse_down(
+            .child(seg("Smooth", curve < 0.25, 24.0).on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|live, _, _, cx| live.set_xf_curve(0.0, cx)),
             ))
-            .child(seg("Scratch", curve >= 0.5, 24.0).on_mouse_down(
+            .child(
+                seg("Blend", (0.25..0.75).contains(&curve), 24.0).on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|live, _, _, cx| live.set_xf_curve(0.5, cx)),
+                ),
+            )
+            .child(seg("Cut", curve >= 0.75, 24.0).on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|live, _, _, cx| live.set_xf_curve(1.0, cx)),
             ));
@@ -429,7 +435,7 @@ impl Live {
         )
     }
 
-    fn set_xf_curve(&mut self, c: f32, cx: &mut Context<Self>) {
+    pub fn set_xf_curve(&mut self, c: f32, cx: &mut Context<Self>) {
         self.settings.xf_curve = c;
         self.mixer(MixCmd::CrossfaderCurve(c));
         self.settings.save();

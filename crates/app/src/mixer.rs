@@ -18,7 +18,7 @@ use crate::{
 };
 
 /// The crossfader card's height.
-const XF_H: f32 = 40.0;
+const XF_H: f32 = 48.0;
 
 /// A channel's knobs' sizes: trim, each EQ band, the filter.
 #[derive(Clone, Copy, Debug)]
@@ -675,32 +675,119 @@ impl Live {
             .child(mark(&self.probes, "mixer.strips.master.end"))
     }
 
+    /// The crossfader, as a mixer's: the decks on each end lit in their colours over how much
+    /// of that side is heard (as the curve has it), the fader in a sunk slot with its ticks and
+    /// its middle marked, a long cap ridged to grip (its line green in the middle), and the
+    /// curve beside it, drawn, clicked round smooth, blend and scratch.
     fn crossfader(&self, cx: &mut Context<Self>) -> Div {
-        let v = (self.mix.xf + 1.0) / 2.0;
-        let (w, cap) = (if self.four { 220.0 } else { 240.0 }, 20.0);
-        // Each end says which decks are on it (as their channels' strips set them).
+        use pina_live_engine::mixer::side_gain;
+        let x = self.mix.xf;
+        let curve = self.settings.xf_curve;
+        let v = (x + 1.0) / 2.0;
+        let (w, cap) = (if self.four { 268.0 } else { 188.0 }, 22.0);
+        let centred = x.abs() < 1e-4;
         let ends = |side: Side| {
             let on: Vec<usize> = self
                 .channel_order()
                 .into_iter()
                 .filter(|&ch| self.mix.side[ch] == side)
                 .collect();
+            let heard = side_gain(side, x, curve);
             div()
-                .min_w(px(28.))
+                .w(px(30.))
+                .flex_none()
                 .flex()
+                .flex_col()
                 .gap(px(4.))
-                .when(side == Side::A, |d| d.justify_end())
-                .when(on.is_empty(), |d| {
-                    d.child(div().text_color(rgb(TEXT_4)).child("—"))
-                })
-                .children(on.into_iter().map(|ch| {
+                .when(side == Side::A, |d| d.items_end())
+                .child(
                     div()
-                        .text_size(px(10.5))
-                        .font_weight(FontWeight::BOLD)
-                        .text_color(rgb(DECK_COLORS[ch]))
-                        .child(DECK_NAMES[ch])
-                }))
+                        .h(px(13.))
+                        .flex()
+                        .gap(px(4.))
+                        .when(on.is_empty(), |d| {
+                            d.child(div().text_color(rgb(TEXT_4)).child("—"))
+                        })
+                        .children(on.iter().map(|&ch| {
+                            div()
+                                .text_size(px(11.))
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(rgb(DECK_COLORS[ch]))
+                                .child(DECK_NAMES[ch])
+                        })),
+                )
+                // How much of this side's heard: its level through the crossfader.
+                .child(
+                    div()
+                        .w(px(26.))
+                        .h(px(3.))
+                        .rounded(px(1.5))
+                        .bg(rgb(WELL))
+                        .flex()
+                        .when(side == Side::A, |d| d.justify_end())
+                        .child(
+                            div()
+                                .w(px(26.0 * heard))
+                                .h_full()
+                                .rounded(px(1.5))
+                                .bg(rgb(on.first().map_or(TEXT_3, |&c| DECK_COLORS[c]))),
+                        ),
+                )
         };
+        let ticks = 16;
+        let scale = canvas(
+            |_, _, _| {},
+            move |b, _, window, _| {
+                let (x0, y0) = (f32::from(b.origin.x), f32::from(b.origin.y));
+                let span = w - cap;
+                let q =
+                    |window: &mut gpui::Window, x: f32, y: f32, w: f32, h: f32, c: gpui::Hsla| {
+                        window.paint_quad(gpui::fill(
+                            gpui::Bounds::new(
+                                gpui::point(px(x0 + x), px(y0 + y)),
+                                gpui::size(px(w), px(h)),
+                            ),
+                            c,
+                        ))
+                    };
+                for k in 0..=ticks {
+                    let tx = cap / 2.0 + k as f32 / ticks as f32 * span - 0.5;
+                    let mid = k == ticks / 2;
+                    let big = k % 4 == 0;
+                    let h = if mid {
+                        7.0
+                    } else if big {
+                        5.0
+                    } else {
+                        3.0
+                    };
+                    let c = if mid {
+                        TEXT_3
+                    } else if big {
+                        LINE_STRONG
+                    } else {
+                        LINE
+                    };
+                    q(window, tx, 0.0, 1.0, h, rgb(c).into());
+                    q(window, tx, 30.0 - h, 1.0, h, rgb(c).into());
+                }
+                // The slot, sunk.
+                window.paint_quad(
+                    gpui::fill(
+                        gpui::Bounds::new(
+                            gpui::point(px(x0 + cap / 2.0 - 3.0), px(y0 + 12.0)),
+                            gpui::size(px(span + 6.0), px(6.)),
+                        ),
+                        rgb(0x08080b),
+                    )
+                    .corner_radii(px(3.))
+                    .border_widths(px(1.))
+                    .border_color(rgb(LINE)),
+                );
+            },
+        )
+        .absolute()
+        .inset_0();
         div()
             .relative()
             .h(px(XF_H))
@@ -709,6 +796,7 @@ impl Live {
             .items_center()
             .justify_center()
             .gap(px(10.))
+            .px(px(12.))
             .rounded(px(8.))
             .bg(rgb(STRIP))
             .border_1()
@@ -719,7 +807,8 @@ impl Live {
                 div()
                     .relative()
                     .w(px(w))
-                    .h(px(28.))
+                    .h(px(30.))
+                    .flex_none()
                     .cursor(gpui::CursorStyle::ResizeLeftRight)
                     .on_mouse_down(
                         MouseButton::Left,
@@ -731,65 +820,107 @@ impl Live {
                     .on_scroll_wheel(cx.listener(|live, e: &gpui::ScrollWheelEvent, _, cx| {
                         live.wheel_ctl(Ctl::Xf, e, cx)
                     }))
-                    .child(
-                        div()
-                            .absolute()
-                            .left(px(cap / 2.0))
-                            .top(px(12.))
-                            .w(px(w - cap))
-                            .h(px(4.))
-                            .rounded(px(2.))
-                            .bg(rgb(WELL))
-                            .border_1()
-                            .border_color(rgb(LINE)),
-                    )
-                    .children((0..=8).map(|k| {
-                        div()
-                            .absolute()
-                            .top(px(2.))
-                            .left(px(cap / 2.0 + k as f32 * (w - cap) / 8.0))
-                            .w(px(1.))
-                            .h(px(if k % 4 == 0 { 7. } else { 4. }))
-                            .bg(rgb(LINE_STRONG))
-                    }))
+                    .child(scale)
                     .child(
                         div()
                             .absolute()
                             .left(px(v * (w - cap)))
-                            .top(px(3.))
+                            .top_0()
                             .w(px(cap))
-                            .h(px(22.))
-                            .rounded(px(3.))
+                            .h(px(30.))
+                            .rounded(px(4.))
                             .bg(gpui::linear_gradient(
-                                90.0,
-                                gpui::linear_color_stop(rgb(0x41414b), 0.0),
-                                gpui::linear_color_stop(rgb(0x26262d), 1.0),
+                                180.0,
+                                gpui::linear_color_stop(rgb(0x44444e), 0.0),
+                                gpui::linear_color_stop(rgb(0x24242b), 1.0),
                             ))
                             .border_1()
-                            .border_color(rgb(0x52525e))
+                            .border_color(rgb(0x55555f))
                             .shadow_md()
-                            .children([4.0, 15.0].map(|x| {
+                            .children([4.0, 7.0, 14.0, 17.0].map(|x| {
                                 div()
                                     .absolute()
-                                    .top(px(4.))
-                                    .bottom(px(4.))
-                                    .left(px(x))
+                                    .top(px(5.))
+                                    .bottom(px(5.))
+                                    .left(px(x - 1.0))
                                     .w(px(1.))
-                                    .bg(alpha(0xffffff, 0.09))
+                                    .bg(alpha(0xffffff, 0.08))
                             }))
                             .child(
                                 div()
                                     .absolute()
-                                    .left(px(cap / 2.0 - 0.5))
-                                    .top(px(4.))
+                                    .top(px(3.))
+                                    .bottom(px(3.))
+                                    .left(px(cap / 2.0 - 1.5))
                                     .w(px(1.))
-                                    .h(px(12.))
-                                    .bg(rgb(TEXT)),
+                                    .bg(rgb(if centred { MINT } else { TEXT })),
                             ),
                     ),
             )
             .child(ends(Side::B))
+            .child(self.curve_button(curve, cx))
             .child(mark(&self.probes, "mixer.xf.end"))
+    }
+
+    /// The crossfader's curve, drawn (each side's level across the fader), clicked round
+    /// smooth, blend and scratch.
+    fn curve_button(&self, curve: f32, cx: &mut Context<Self>) -> Div {
+        use pina_live_engine::mixer::side_gain;
+        let glyph = canvas(
+            |_, _, _| {},
+            move |b, _, window, _| {
+                let (x0, y0) = (f32::from(b.origin.x), f32::from(b.origin.y));
+                let (gw, gh) = (f32::from(b.size.width), f32::from(b.size.height));
+                for (side, c) in [(Side::A, TEXT_2), (Side::B, TEXT_3)] {
+                    let mut p = gpui::PathBuilder::stroke(px(1.25));
+                    for k in 0..=24 {
+                        let t = k as f32 / 24.0;
+                        let g = side_gain(side, t * 2.0 - 1.0, curve);
+                        let at =
+                            gpui::point(px(x0 + t * gw), px(y0 + 1.0 + (1.0 - g) * (gh - 2.0)));
+                        match k {
+                            0 => p.move_to(at),
+                            _ => p.line_to(at),
+                        }
+                    }
+                    if let Ok(p) = p.build() {
+                        window.paint_path(p, rgb(c));
+                    }
+                }
+            },
+        )
+        .w(px(20.))
+        .h(px(11.));
+        crate::hw::display(34.0)
+            .w(px(32.))
+            .flex_col()
+            .justify_center()
+            .gap(px(3.))
+            .cursor_pointer()
+            .hover(|s| s.border_color(rgb(LINE_STRONG)))
+            .child(glyph)
+            .child(
+                div()
+                    .text_size(px(6.5))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(rgb(TEXT_4))
+                    .child(match curve {
+                        c if c < 0.25 => "SMOOTH",
+                        c if c < 0.75 => "BLEND",
+                        _ => "CUT",
+                    }),
+            )
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |live, _, _, cx| {
+                    let next = match live.settings.xf_curve {
+                        c if c < 0.25 => 0.5,
+                        c if c < 0.75 => 1.0,
+                        _ => 0.0,
+                    };
+                    live.set_xf_curve(next, cx);
+                }),
+            )
     }
 }
 

@@ -1296,123 +1296,188 @@ impl Live {
             .child(step(1.0, "♯", cx))
     }
 
+    /// The deck's hardware along its foot, as a player's: CUE and PLAY round and lit (PLAY
+    /// blinking while it's paused, CUE while it's away from the cue), SYNC and LEAD keys, then
+    /// the key (a display of the key it's playing in, ♭ and ♯ either side, MATCH lit while it
+    /// mixes with the deck it's against) and REV; compact, keylock and slip instead of the key.
     fn transport(&self, i: usize, s: &DeckStatus, cx: &mut Context<Self>) -> Div {
+        use crate::hw::{Led, key, round};
         let d = &self.decks[i];
         let leader = self.leader() == Some(i);
         let compact = self.narrow;
-        let size = if compact { 36.0 } else { 42.0 };
-        let ring = move |on: bool, color: u32, held: bool| {
-            div()
-                .size(px(size))
-                .flex_none()
-                .rounded(px(size / 2.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .border_2()
-                .border_color(rgb(if on { color } else { LINE_STRONG }))
-                .bg(rgb(if held { alpha_mix(color) } else { CARD }))
-                .cursor_pointer()
-                .hover(|st| st.bg(rgb(RAISED)))
+        // Sized to the card: four a side's narrowest, compact narrower than full.
+        let big = if self.four {
+            34.0
+        } else if compact {
+            38.0
+        } else {
+            46.0
         };
-        let round = move |label: Icon, on: bool, color: u32, held: bool| {
-            ring(on, color, held).child(icon(label, 17.).text_color(rgb(if on {
-                color
+        let kh = if compact { 30.0 } else { 32.0 };
+        let kp = if self.four {
+            7.0
+        } else if compact {
+            8.0
+        } else {
+            9.0
+        };
+        let blink = self.blink;
+        let held = self.holding(i, Hold::Cue);
+        let at_cue = (s.pos - s.cue).abs() < 1.0;
+        let cue_led = match (s.loaded, held || s.previewing, s.playing, at_cue) {
+            (false, ..) => Led::Off,
+            (_, true, ..) => Led::On(AMBER),
+            (_, _, true, _) => Led::Off,
+            (_, _, false, true) => Led::On(AMBER),
+            (_, _, false, false) => Led::Blink(AMBER, blink),
+        };
+        // Playing, its ring brightens on each beat and fades to the next: the tempo, seen.
+        let play_led = match (s.loaded, s.playing && !s.previewing, s.beat.is_nan()) {
+            (false, ..) => Led::Off,
+            (true, true, true) => Led::On(MINT),
+            (true, true, false) => Led::Beat(MINT, (1.0 - s.beat.rem_euclid(1.0) as f32).powi(3)),
+            (true, false, _) => Led::Blink(MINT, blink),
+        };
+        let cue_word = div()
+            .text_size(px(if self.four {
+                9.
+            } else if compact {
+                10.
+            } else {
+                11.
+            }))
+            .font_weight(FontWeight::BOLD)
+            .text_color(rgb(if matches!(cue_led, Led::On(_)) {
+                TEXT
             } else {
                 TEXT_2
-            })))
-        };
-        // Cue says so, as a CDJ's does: an arrow read as "back to the start".
-        let cue_button = move |on: bool, held: bool| {
-            ring(on, AMBER, held).child(
-                div()
-                    .text_size(px(if compact { 10. } else { 11. }))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(rgb(if on { AMBER } else { TEXT_2 }))
-                    .child("CUE"),
-            )
-        };
-        let cue_lit = s.previewing || (!s.playing && s.loaded && (s.pos - s.cue).abs() < 1.0);
-        let pad_x = if compact { 7.0 } else { 10.0 };
-        let outline = move |d: Div, on: bool| {
-            d.border_1()
-                .border_color(rgb(if on { ACCENT } else { LINE }))
-                .px(px(pad_x))
-        };
+            }))
+            .child("CUE");
+        let play_icon = icon(
+            if s.playing && !s.previewing {
+                Icon::Pause
+            } else {
+                Icon::Play
+            },
+            if compact { 15. } else { 17. },
+        )
+        .text_color(rgb(if s.playing { TEXT } else { TEXT_2 }));
         div()
             .relative()
             .h(px(transport_h(compact)))
             .flex_none()
             .flex()
             .items_center()
-            .gap(px(if compact { 6. } else { 10. }))
+            .gap(px(if compact { 5. } else { 6. }))
             .px(px(if compact { 10. } else { 14. }))
             .border_t_1()
             .border_color(rgb(LINE_SOFT))
+            .bg(alpha(0x000000, 0.12))
             .child(probe(&self.probes, format!("deck{i}.transport")))
+            .child(round(big, cue_led, held, cue_word).on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |live, _, _, cx| live.hold(i, Hold::Cue, cx)),
+            ))
+            .child(round(big, play_led, false, play_icon).on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |live, _, _, cx| {
+                    live.act(i, DeckCmd::Play);
+                    cx.notify();
+                }),
+            ))
+            .child(div().w(px(if compact { 2. } else { 4. })))
             .child(
-                cue_button(cue_lit, self.holding(i, Hold::Cue)).on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |live, _, _, cx| live.hold(i, Hold::Cue, cx)),
-                ),
-            )
-            .child(
-                round(
-                    if s.playing && !s.previewing {
-                        Icon::Pause
-                    } else {
-                        Icon::Play
-                    },
-                    s.playing,
-                    MINT,
+                key(
+                    "SYNC",
+                    if s.sync { Led::On(ACCENT) } else { Led::Off },
                     false,
+                    kh,
+                    kp,
                 )
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(move |live, _, _, cx| {
-                        live.act(i, DeckCmd::Play);
+                        let on = !live.status().decks[i].sync;
+                        live.act(i, DeckCmd::Sync(on));
                         cx.notify();
                     }),
                 ),
             )
             .child(
-                outline(seg("Sync", s.sync, 30.0), s.sync)
-                    .when(s.sync, |d| d.bg(rgb(ACCENT)).text_color(rgb(0xffffff)))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |live, _, _, cx| {
-                            let on = !live.status().decks[i].sync;
-                            live.act(i, DeckCmd::Sync(on));
-                            cx.notify();
-                        }),
-                    ),
-            )
-            .child(
-                outline(seg("Lead", leader, 30.0), false)
-                    .when(leader, |d| {
-                        d.text_color(rgb(ACCENT_TEXT)).bg(alpha(ACCENT, 0.14))
-                    })
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |live, _, _, cx| {
-                            let picked = live.leader() == Some(i);
-                            live.remote.send(Command::Leader((!picked).then_some(i)));
-                            cx.notify();
-                        }),
-                    ),
+                key(
+                    "LEAD",
+                    if leader { Led::On(AMBER) } else { Led::Off },
+                    false,
+                    kh,
+                    kp,
+                )
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |live, _, _, cx| {
+                        let picked = live.leader() == Some(i);
+                        live.remote.send(Command::Leader((!picked).then_some(i)));
+                        cx.notify();
+                    }),
+                ),
             )
             .child(div().flex_1())
             // Compact, keylock and slip come down here from under the ring.
             .when(compact, |t| {
-                t.child(self.keylock_button(i, d.keylock, false, cx))
+                t.child(
+                    key(
+                        icon(Icon::Lock, 12.).text_color(rgb(if d.keylock {
+                            TEXT
+                        } else {
+                            TEXT_3
+                        })),
+                        if d.keylock { Led::On(ACCENT) } else { Led::Off },
+                        false,
+                        kh,
+                        kp,
+                    )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |live, _, _, cx| {
+                            let on = !live.decks[i].keylock;
+                            live.decks[i].keylock = on;
+                            live.act(i, DeckCmd::Keylock(on));
+                            cx.notify();
+                        }),
+                    ),
+                )
             })
             .when(compact && !self.four, |t| {
-                t.child(self.slip_button(i, d.slip, cx).px(px(pad_x)))
-            })
-            .when(!compact, |t| t.child(self.key_buttons(i, s, cx)))
-            .when(!self.four, |t| {
                 t.child(
-                    outline(seg("Rev", self.holding(i, Hold::Censor), 30.0), false).on_mouse_down(
+                    key(
+                        "SLIP",
+                        if d.slip { Led::On(AMBER) } else { Led::Off },
+                        false,
+                        kh,
+                        kp,
+                    )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |live, _, _, cx| {
+                            let on = !live.decks[i].slip;
+                            live.decks[i].slip = on;
+                            live.act(i, DeckCmd::Slip(on));
+                            cx.notify();
+                        }),
+                    ),
+                )
+            })
+            .when(!compact, |t| t.child(self.key_module(i, s, kh, cx)))
+            .when(!self.four, |t| {
+                let rev = self.holding(i, Hold::Censor);
+                t.child(
+                    key(
+                        "REV",
+                        if rev { Led::On(RECORD) } else { Led::Off },
+                        rev,
+                        kh,
+                        kp,
+                    )
+                    .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |live, _, _, cx| live.hold(i, Hold::Censor, cx)),
                     ),
@@ -1421,10 +1486,71 @@ impl Live {
             .child(mark(&self.probes, format!("deck{i}.transport.end")))
     }
 
-    fn key_buttons(&self, i: usize, s: &DeckStatus, cx: &mut Context<Self>) -> Div {
-        let key = s.key;
+    /// The deck it's mixed against for its key: the leader, else the next deck playing.
+    fn key_partner(&self, i: usize) -> Option<usize> {
+        let all = self.status().decks;
+        match self.leader() {
+            Some(l) if l != i && all[l].loaded => Some(l),
+            _ => (0..all.len()).find(|&d| d != i && all[d].playing),
+        }
+    }
+
+    /// The key deck `d` is heard in: its own, moved by its key shift and (keylock off) by its
+    /// tempo, to the nearest semitone.
+    fn heard_key(&self, d: usize) -> Option<String> {
+        let s = self.status().decks[d];
+        let own = self.decks[d].analysis.as_ref().map(|a| a.camelot.clone())?;
+        let by = s.key
+            + if s.keylock {
+                0.0
+            } else {
+                12.0 * s.tempo.max(1e-6).log2()
+            };
+        camelot_shift(&own, by.round() as i32)
+    }
+
+    /// Deck `i`'s key shifted to the nearest one that mixes with its partner's (the fewest
+    /// semitones; none if it mixes already).
+    fn match_key(&mut self, i: usize) {
+        let Some(p) = self.key_partner(i) else { return };
+        let (Some(theirs), Some(own)) = (
+            self.heard_key(p),
+            self.decks[i].analysis.as_ref().map(|a| a.camelot.clone()),
+        ) else {
+            return;
+        };
+        let s = self.status().decks[i];
+        let tempo = if s.keylock {
+            0.0
+        } else {
+            12.0 * s.tempo.max(1e-6).log2()
+        };
+        let best = [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6]
+            .into_iter()
+            .find(|&k| {
+                camelot_shift(&own, (k as f64 + tempo).round() as i32)
+                    .is_some_and(|k| pina_live_engine::analyze::compatible(&k, &theirs))
+            });
+        if let Some(k) = best {
+            self.act(i, DeckCmd::Key(k as f64));
+        }
+    }
+
+    /// The key, as a player's: ♭, a display of the key it's heard in (its place on the wheel,
+    /// how far it's shifted; clicked, back to its own), ♯, and MATCH, lit while it mixes with
+    /// the deck it's against, pressed to shift it to the nearest key that does.
+    fn key_module(&self, i: usize, s: &DeckStatus, kh: f32, cx: &mut Context<Self>) -> Div {
+        use crate::hw::{Led, display, key};
+        let kp = 9.0;
+        let shift = s.key.round() as i32;
+        let heard = self.heard_key(i);
+        let mixes = self
+            .key_partner(i)
+            .and_then(|p| self.heard_key(p))
+            .zip(heard.clone())
+            .map(|(t, m)| pina_live_engine::analyze::compatible(&m, &t));
         let step = |by: f64, label: &'static str, cx: &mut Context<Self>| {
-            seg(label, false, 26.0).px(px(7.)).on_mouse_down(
+            key(label, Led::None, false, kh, 8.0).on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |live, e: &MouseDownEvent, _, cx| {
                     let k = live.status().decks[i].key;
@@ -1439,29 +1565,78 @@ impl Live {
                 }),
             )
         };
-        tray()
+        div()
+            .flex()
+            .items_center()
+            .gap(px(3.))
             .child(step(-1.0, "♭", cx))
             .child(
-                div()
-                    .w(px(30.))
-                    .text_center()
-                    .font_family(MONO)
-                    .text_size(px(11.))
-                    .text_color(rgb(if key.abs() > 0.01 { AMBER } else { TEXT_3 }))
-                    .child(if key.abs() < 0.01 {
-                        "Key".to_string()
-                    } else {
-                        format!("{:+}", key.round())
-                    }),
+                display(kh)
+                    .w(px(52.))
+                    .px(px(6.))
+                    .gap(px(4.))
+                    .cursor_pointer()
+                    .children(
+                        heard
+                            .as_deref()
+                            .and_then(crate::browser::key_hue)
+                            .map(|c| div().size(px(6.)).flex_none().rounded(px(3.)).bg(c)),
+                    )
+                    .child(
+                        div()
+                            .font_family(MONO)
+                            .text_size(px(12.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(rgb(if heard.is_some() { TEXT } else { TEXT_4 }))
+                            .child(heard.clone().unwrap_or_else(|| "—".into())),
+                    )
+                    .when(shift != 0, |d| {
+                        d.child(
+                            div()
+                                .font_family(MONO)
+                                .text_size(px(8.5))
+                                .text_color(rgb(AMBER))
+                                .child(format!("{shift:+}")),
+                        )
+                    })
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |live, _, _, cx| {
+                            live.act(i, DeckCmd::Key(0.0));
+                            cx.notify();
+                        }),
+                    ),
             )
             .child(step(1.0, "♯", cx))
+            .child(
+                key(
+                    "MATCH",
+                    match mixes {
+                        Some(true) => Led::On(MINT),
+                        Some(false) => Led::Off,
+                        None => Led::Off,
+                    },
+                    false,
+                    kh,
+                    kp,
+                )
+                .ml(px(4.))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |live, _, _, cx| {
+                        live.match_key(i);
+                        cx.notify();
+                    }),
+                ),
+            )
     }
 }
 
-/// A held round button's fill: its color, dimmed well down.
-fn alpha_mix(c: u32) -> u32 {
-    let ch = |shift: u32| (((c >> shift) & 0xff) as f32 * 0.25) as u32;
-    (ch(16) << 16) | (ch(8) << 8) | ch(0)
+/// A Camelot key moved `semis` semitones: seven places round the wheel a semitone.
+pub fn camelot_shift(k: &str, semis: i32) -> Option<String> {
+    let (n, l) = k.split_at(k.len().checked_sub(1)?);
+    let n: i32 = n.parse().ok().filter(|n| (1..=12).contains(n))?;
+    Some(format!("{}{l}", (n - 1 + 7 * semis).rem_euclid(12) + 1))
 }
 
 /// For the browser: the ids of decks with `id` on them.
