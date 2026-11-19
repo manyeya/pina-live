@@ -528,6 +528,7 @@ impl Live {
             top = top.child(
                 pad(label, Some(STEM_COLORS[k]), on, h)
                     .font_family(SANS)
+                    .text_size(px(11.5))
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |live, _, _, cx| {
@@ -542,15 +543,18 @@ impl Live {
         let preset = |label: &'static str, gains: [f32; STEMS], cx: &mut Context<Self>| {
             // Lit when what's apart is as it says (what isn't apart can't differ).
             let lit = (0..STEMS).all(|k| (k < 3 && !has[k]) || g[k] == gains[k]);
-            pad(label, None, lit, h).font_family(SANS).on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |live, _, _, cx| {
-                    for (stem, gain) in gains.into_iter().enumerate() {
-                        live.deck(i, DeckCmd::StemGain { stem, gain });
-                    }
-                    cx.notify();
-                }),
-            )
+            pad(label, None, lit, h)
+                .font_family(SANS)
+                .text_size(px(11.5))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |live, _, _, cx| {
+                        for (stem, gain) in gains.into_iter().enumerate() {
+                            live.deck(i, DeckCmd::StemGain { stem, gain });
+                        }
+                        cx.notify();
+                    }),
+                )
         };
         let mut bottom = div().flex().gap(px(6.));
         if has[0] {
@@ -579,8 +583,9 @@ impl Live {
         bottom = bottom.child(preset("All", [1.0; STEMS], cx));
         if has != [true; 3] {
             bottom = bottom.child(
-                pad(if narrow { "More" } else { "More parts" }, None, false, h)
+                pad("More", None, false, h)
                     .font_family(SANS)
+                    .text_size(px(11.5))
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |live, _, _, cx| {
