@@ -179,11 +179,13 @@ impl Live {
         let w = if four { 82.0 } else { 116.0 };
         let (fh, _, k, _) = self.mixer_budget();
         // A knob's row: its name and what it reads (compact, what it reads while it's turned).
+        // `rw` its width: the strip's less a margin each side, or less the EQ panel's too.
         let row = |label: &'static str,
                    ctl: Ctl,
                    lit: u32,
                    ks: f32,
                    ends: (&'static str, &'static str),
+                   rw: f32,
                    cx: &mut Context<Self>| {
             let turning = self.turning(ctl);
             let v = self.ctl_value(ctl);
@@ -218,8 +220,8 @@ impl Live {
                     .absolute()
                     .top(px(ks * 0.66))
                     .w(px(side + 2.0))
-                    .when(left, |d| d.left(px(-2.)))
-                    .when(!left, |d| d.right(px(-2.)).flex().justify_end())
+                    .when(left, |d| d.left_0())
+                    .when(!left, |d| d.right_0().flex().justify_end())
                     .font_family(MONO)
                     .text_size(px(7.))
                     .text_color(rgb(TEXT_4))
@@ -237,7 +239,7 @@ impl Live {
                     d.child(end(ends.0, true)).child(end(ends.1, false))
                 });
             div()
-                .w(px(w - 16.0))
+                .w(px(rw))
                 .h(px(ks))
                 .flex()
                 .items_center()
@@ -370,7 +372,15 @@ impl Live {
                         }),
                     ),
             )
-            .child(row("TRIM", Ctl::Trim(ch), TEXT_2, k.trim, ("−", "+"), cx))
+            .child(row(
+                "TRIM",
+                Ctl::Trim(ch),
+                TEXT_2,
+                k.trim,
+                ("−", "+"),
+                w - 16.0,
+                cx,
+            ))
             .child(rule())
             // The EQ, sunk in a panel of its own.
             .child(
@@ -386,9 +396,33 @@ impl Live {
                     .bg(alpha(0x000000, 0.22))
                     .border_1()
                     .border_color(rgb(LINE_SOFT))
-                    .child(row("HIGH", Ctl::Eq(ch, 2), eq(2), k.eq, ("−∞", "+6"), cx))
-                    .child(row("MID", Ctl::Eq(ch, 1), eq(1), k.eq, ("−∞", "+6"), cx))
-                    .child(row("LOW", Ctl::Eq(ch, 0), eq(0), k.eq, ("−∞", "+6"), cx)),
+                    .child(row(
+                        "HIGH",
+                        Ctl::Eq(ch, 2),
+                        eq(2),
+                        k.eq,
+                        ("−∞", "+6"),
+                        w - 26.0,
+                        cx,
+                    ))
+                    .child(row(
+                        "MID",
+                        Ctl::Eq(ch, 1),
+                        eq(1),
+                        k.eq,
+                        ("−∞", "+6"),
+                        w - 26.0,
+                        cx,
+                    ))
+                    .child(row(
+                        "LOW",
+                        Ctl::Eq(ch, 0),
+                        eq(0),
+                        k.eq,
+                        ("−∞", "+6"),
+                        w - 26.0,
+                        cx,
+                    )),
             )
             .child(rule())
             .child(row(
@@ -397,6 +431,7 @@ impl Live {
                 ACCENT,
                 k.filter,
                 ("LP", "HP"),
+                w - 16.0,
                 cx,
             ))
             .child(rule())
