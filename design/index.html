@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pina Live designs</title>
+<link rel="stylesheet" href="kit.css">
+<script src="kit.js"></script>
+<style>
+/* ---------- Shared pieces in every design ---------- */
+.top { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.brand { font-weight: 700; font-size: 13px; margin-right: 4px; }
+.lead-read { display: flex; align-items: center; gap: 7px; color: var(--text3); }
+.lead-read b { font-family: GeistMono; color: var(--text); font-weight: 500; }
+.recbtn { height: 28px; padding: 0 10px; display: flex; align-items: center; gap: 7px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--text2); }
+
+.fxbar { display: flex; height: 56px; background: var(--surface); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.fxu { flex: 1; display: flex; align-items: center; gap: 10px; padding: 0 14px; }
+.fxu + .fxu { border-left: 1px solid var(--line); }
+.fxon { height: 30px; padding: 0 11px; display: flex; align-items: center; gap: 7px; border-radius: 7px; font-weight: 600; border: 1px solid var(--line); background: var(--card); color: var(--text3); }
+.fxon.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.dd { height: 30px; padding: 0 8px 0 10px; display: flex; align-items: center; justify-content: space-between; gap: 6px; border-radius: 7px; border: 1px solid var(--raised); background: var(--card); width: 116px; font-weight: 500; }
+.beats { display: flex; gap: 2px; padding: 3px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); }
+.beats span { min-width: 27px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 5px; font-family: GeistMono; font-size: 11px; color: var(--text3); }
+.beats span.on { background: var(--raised); color: var(--text); }
+.kn { display: flex; align-items: center; gap: 6px; }
+.kn .l { display: flex; flex-direction: column; gap: 1px; }
+.kn .v { font-family: GeistMono; font-size: 11px; color: var(--text2); }
+.assign { display: flex; gap: 3px; }
+.assign span { width: 26px; height: 24px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; color: var(--text4); border: 1px solid var(--line); background: var(--bg); }
+
+.lib { display: flex; flex: 1; min-height: 0; background: var(--bg); }
+.side { width: 200px; flex: none; background: var(--headers); border-right: 1px solid var(--line); padding: 6px 0; }
+.side .h { padding: 10px 14px 4px; font-size: 10px; font-weight: 600; color: var(--text4); letter-spacing: .04em; }
+.side .r { height: 26px; margin: 0 6px; padding: 0 8px; display: flex; align-items: center; gap: 8px; border-radius: 6px; color: var(--text2); }
+.side .r.on { background: var(--raised); color: var(--text); }
+.side .r .n { margin-left: auto; font-family: GeistMono; font-size: 10.5px; color: var(--text4); }
+.table { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.sbar { height: 42px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid var(--line-soft); }
+.search { width: 300px; height: 28px; display: flex; align-items: center; gap: 7px; padding: 0 9px; border-radius: 7px; background: var(--card); border: 1px solid var(--line); color: var(--text4); }
+.fchip { height: 26px; padding: 0 9px; display: flex; align-items: center; gap: 6px; border-radius: 6px; border: 1px solid var(--line); color: var(--text3); font-weight: 500; }
+.fchip.on { border-color: #5b8cff66; background: #5b8cff1c; color: var(--accent-text); }
+.th, .tr { display: flex; align-items: center; gap: 12px; padding: 0 12px; }
+.th { height: 26px; flex: none; font-size: 10.5px; font-weight: 600; color: var(--text3); border-bottom: 1px solid var(--line-soft); }
+.tr { height: 27px; border-bottom: 1px solid var(--line-soft); }
+.tr.sel { background: var(--raised); }
+.tr .m { font-family: GeistMono; font-size: 11px; text-align: right; }
+.decktag { width: 15px; height: 15px; border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; }
+.pv { width: 20px; height: 20px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--text4); }
+.shimmer { height: 8px; width: 34px; border-radius: 4px; background: linear-gradient(90deg, #1e1e25, #34343d, #1e1e25); margin-left: auto; }
+.loadbtn { width: 20px; height: 20px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700; color: var(--text4); }
+
+.wrow { display: flex; border-bottom: 1px solid var(--line); background: var(--lane); }
+.wl { width: 66px; flex: none; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 0 10px; background: var(--headers); border-right: 1px solid var(--line); }
+.dots { display: flex; gap: 3px; }
+.dots i { flex: 1; height: 5px; border-radius: 1.5px; background: var(--raised); }
+
+.pad { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); font-family: GeistMono; font-weight: 600; font-size: 11.5px; color: var(--text3); }
+.round { border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; border: 2px solid var(--line-strong); background: var(--card); color: var(--text2); }
+</style>
+</head>
+<body>
+<div class="gallery-nav">
+  <span class="t">Pina Live · four designs</span>
+  <button data-d="0" class="on"><span class="n">1</span>Console</button>
+  <button data-d="1"><span class="n">2</span>Stage</button>
+  <button data-d="2"><span class="n">3</span>Studio</button>
+  <button data-d="3"><span class="n">4</span>Vertical</button>
+</div>
+<div class="caption" id="cap"></div>
+<div class="stage-wrap"><div class="frame" id="frame"></div></div>
+
+<script>
+const CAPS = [
+`<b>1 · Console.</b> Club gear on screen. A real two-channel mixer in the middle, every knob labelled in its channel's column, long faders with a scale, tall meters, FX 1 and 2 sends lit on the channel they're on, and a proper crossfader with each channel's side on it. The decks either side have big platters, a long pitch fader on the outside edge, CDJ-sized Cue and Play, and 8 big pads. Shown: dragging <b>Yours</b> from the library onto deck B's waveform (the row lights in B's colour to say where it'll go), Echo on deck A with its send lit, B synced to A.`,
+`<b>2 · Stage.</b> The waveforms are the instrument. Each deck is a tall waveform with its controls on it: Cue, Play, Sync and the readouts in a strip along its top, and the whole track under it. Underneath is a performance row: 16 pads a deck (cues and loops at once, or stems), the mixer laid flat between them, and the pitch faders on the outer edges. No platters: you scratch on the waveform. Shown: deck B's Stems pads (vocals out), the library filtered to <b>Match B</b> (tempo near and key that mixes, both lit), a track analysing.`,
+`<b>3 · Studio.</b> Pina Studio's own look: quiet surfaces and every section captioned. Each deck card has a beat ring (the bar's beats going round, the playhead's place in the phrase) in place of a platter. The mixer is a strip per channel the way Pina's mixer is: EQ in a column, a fader with a dB scale beside its meter. Shown: dropping a track onto deck B (the whole card says it'll load there, with what it is and how it fits), Rolls on A, crates in the library.`,
+`<b>4 · Vertical.</b> Beatmatching by eye: the two waveforms run up the middle side by side, the beat grid running across both, so you can see the kicks line up. The mixer sits right under them. The decks are either side with big platters and the pads beneath. Shown: FX 2 Flanger on B, A's beat-jump pads, the grid tools open from B's BPM (halve, double, nudge, downbeat here).`,
+];
+
+/* ---------- Pieces ---------- */
+function topBar(o = {}) {
+  return `<div class="top">
+    <span class="brand">Pina Live</span>
+    <div class="tray"><span class="seg on">2 decks</span><span class="seg">4 decks</span></div>
+    <div class="tray"><span class="seg on">${icon('magnet', 13, 'color:#a5c0ff')}Quantize</span></div>
+    <span class="lead-read">Sync follows <span style="color:${C.accent};font-weight:700">A</span><b>121.54 BPM</b></span>
+    <div class="f1"></div>
+    ${o.analysing ? `<span style="color:${C.text3}">Analysing 2 of 14</span><div style="width:80px;height:4px;border-radius:2px;background:${C.raised}"><div style="width:30%;height:100%;border-radius:2px;background:${C.accent}"></div></div><span class="btn" style="height:24px">Stop</span>` : ''}
+    <span class="recbtn">${icon('rec', 14, 'color:#ff4d4d')}Record</span>
+    <span class="recbtn">${icon('midi', 14)}MIDI</span>
+    <span class="row" style="gap:6px;color:${C.text3}">${icon('speaker', 14)}MacBook Air Speakers · 44.1 kHz</span>
+    <span class="seg" style="width:30px;padding:0">${icon('settings', 15)}</span>
+  </div>`;
+}
+
+function fx(o = {}) {
+  const unit = (u, kind, on, beats, lvl, prm, pname, assign) => `<div class="fxu">
+    <span class="cap" style="width:28px">FX ${u}</span>
+    <span class="fxon ${on ? 'on' : ''}">${icon('power', 13)}${on ? 'On' : 'Off'}</span>
+    <span class="dd">${kind}${icon('chevron', 13, 'color:#8a8a95')}</span>
+    <span class="beats">${['1/4', '1/2', '3/4', '1', '2', '4', '8'].map(b => `<span class="${b === beats ? 'on' : ''}">${b}</span>`).join('')}</span>
+    <div class="kn">${knob(lvl, 28, on ? C.accent : C.text3)}<span class="cap">Level</span></div>
+    <div class="kn">${knob(prm, 28, on ? C.accent : C.text3)}<span class="cap">${pname}</span></div>
+    <div class="f1"></div>
+    <div class="assign">${['A', 'B'].map(d => assign.includes(d) ? `<span style="background:${alpha(DECK[d], 0.22)};border-color:${alpha(DECK[d], 0.5)};color:${DECK[d]}">${d}</span>` : `<span>${d}</span>`).join('')}</div>
+  </div>`;
+  return `<div class="fxbar" style="${o.style || ''}">${unit(1, 'Echo', true, '3/4', 0.55, 0.6, 'Feedback', ['A'])}${unit(2, o.fx2 || 'Flanger', !!o.fx2on, o.fx2b || '8', 0.5, 0.4, 'Feedback', o.fx2on ? ['B'] : [])}</div>`;
+}
+
+function library(o = {}) {
+  const lead = '3A';
+  const rows = LIB.filter(t => !o.match || (Math.abs(t.bpm - 121.54) / 121.54 < 0.06 && fits(t.key, lead)));
+  const sideRow = (ic, label, n, on) => `<div class="r ${on ? 'on' : ''}">${icon(ic, 14, on ? '' : 'color:#8a8a95')}<span class="ell">${label}</span>${n != null ? `<span class="n">${n}</span>` : ''}</div>`;
+  return `<div class="lib">
+    <div class="side">
+      <div class="h">LIBRARY</div>
+      ${sideRow('list', 'All tracks', 14, !o.crate)}${sideRow('plus', 'Added this month', null)}${sideRow('history', 'History', 2)}
+      <div class="h">FOLDERS</div>${sideRow('folder', 'From You, 32 Years Ago', 11)}${sideRow('folder', 'Downloads', 3)}
+      <div class="h">CRATES</div>${sideRow('stack', 'Sunday warm-up', 6, o.crate)}${sideRow('stack', 'Afro house peak', 9)}
+    </div>
+    <div class="table">
+      <div class="sbar">
+        <div class="search">${icon('search', 14)}<span>Search  ·  bpm:120-124  key:~3A</span></div>
+        <span class="fchip ${o.match ? 'on' : ''}">${icon('match', 13)}Match B</span>
+        <span style="font-family:GeistMono;font-size:11px;color:${C.text3}">${rows.length} tracks</span>
+        <div class="f1"></div>
+        ${o.analysing ? `<span style="color:${C.text3};font-size:11px">Finding tempo and key · 2 left</span>` : ''}
+        <span style="color:${C.text4};font-size:11px">Drag a track onto a deck · double-click loads the free one</span>
+      </div>
+      <div class="th"><span style="width:20px"></span><span style="width:30px"></span><span class="f1">TITLE</span><span style="width:190px">ARTIST</span><span style="width:52px;text-align:right">BPM ↓</span><span style="width:34px;text-align:right">KEY</span><span style="width:44px;text-align:right">TIME</span><span style="width:110px">GENRE</span><span style="width:36px;text-align:right">PLAYS</span><span style="width:46px"></span></div>
+      ${rows.map((t, i) => {
+        const sel = o.sel === t.t;
+        const k = fits(t.key, lead);
+        return `<div class="tr ${sel ? 'sel' : ''}">
+          <span class="pv">${icon('play', 11)}</span>
+          <span style="width:30px;display:flex;gap:2px">${t.deck ? `<span class="decktag" style="background:${alpha(DECK[t.deck], 0.2)};color:${DECK[t.deck]}">${t.deck}</span>` : ''}</span>
+          <span class="f1 ell" style="color:${t.p ? C.text3 : C.text}">${t.t}</span>
+          <span style="width:190px;color:${C.text2}" class="ell">${t.a}</span>
+          ${t.ana ? `<span style="width:52px"><span class="shimmer"></span></span><span style="width:34px"><span class="shimmer" style="width:22px"></span></span>` :
+            `<span class="m" style="width:52px;color:${o.match ? C.accentText || '#a5c0ff' : C.text2}">${t.bpm.toFixed(1)}</span><span class="m" style="width:34px;color:${k ? '#a5c0ff' : C.text2}">${t.key}</span>`}
+          <span class="m" style="width:44px;color:${C.text3}">${clock(t.s)}</span>
+          <span style="width:110px;color:${C.text3}" class="ell">${t.g}</span>
+          <span class="m" style="width:36px;color:${C.text4}">${t.p || ''}</span>
+          <span style="width:46px;display:flex;gap:4px;justify-content:flex-end"><span class="loadbtn">A</span><span class="loadbtn">B</span></span>
+        </div>`; }).join('')}
+    </div>
+  </div>`;
+}
+
+function wrow(d, h, extra = '') {
+  const tr = TRACK[d];
+  const beat = Math.floor(tr.now * tr.bpm / 60) % 4;
+  return `<div class="wrow" style="height:${h}px;position:relative">
+    <div class="wl"><div class="row" style="justify-content:space-between"><b style="color:${DECK[d]};font-size:13px">${d}</b>${d === 'A' ? `<span style="font-size:8.5px;font-weight:700;color:#a5c0ff">LEAD</span>` : ''}</div>
+      <div class="dots">${[0, 1, 2, 3].map(i => `<i style="${i === beat ? `background:${i === 0 ? DECK[d] : C.text2}` : ''}"></i>`).join('')}</div></div>
+    <canvas class="f1" data-wave="${d}" style="height:${h - 1}px"></canvas>${extra}
+  </div>`;
+}
+
+function hotPads(tr, h, big) {
+  return [0, 1].map(r => `<div class="row" style="gap:6px">${[0, 1, 2, 3].map(c => { const k = r * 4 + c, v = tr.hot[k];
+    return v == null ? `<span class="pad" style="height:${h}px;color:${C.text4}">${k + 1}</span>` :
+    `<span class="pad" style="height:${h}px;background:${alpha(CUES[k], 0.14)};border-color:${alpha(CUES[k], 0.55)};color:${CUES[k]}">${k + 1}${big ? `<span style="color:${C.text2};font-weight:500">${clock(v)}</span>` : ''}</span>`; }).join('')}</div>`).join('');
+}
+function sizePads(sizes, color, lit, h, label = beatText) {
+  return [0, 1].map(r => `<div class="row" style="gap:6px">${[0, 1, 2, 3].map(c => { const s = sizes[r * 4 + c]; const on = s === lit;
+    return `<span class="pad" style="height:${h}px;${on ? `background:${color};border-color:${color};color:#0c0c0f` : `color:${color}`}">${label(s)}</span>`; }).join('')}</div>`).join('');
+}
+function stemPads(h) {
+  const names = ['Vocals', 'Drums', 'Bass', 'Melody'], on = [false, true, true, true];
+  return `<div class="row" style="gap:6px">${names.map((n, i) => `<span class="pad" style="height:${h}px;font-family:Geist;${on[i] ? `background:${STEM[i]};border-color:${STEM[i]};color:#0c0c0f` : `color:${STEM[i]};border-color:${alpha(STEM[i], 0.5)}`}">${n}</span>`).join('')}</div>
+  <div class="row" style="gap:6px">${['Acapella', 'Instrumental', 'Drums only', 'All'].map((n, i) => `<span class="pad" style="height:${h}px;font-family:Geist;font-weight:500;${i === 1 ? `background:${C.raised};color:${C.text};border-color:${C.lineStrong}` : ''}">${n}</span>`).join('')}</div>`;
+}
+function tabs(on, opts = {}) {
+  return `<div class="tray" style="${opts.style || ''}">${['Hot Cue', 'Loop', 'Roll', 'Jump', 'Stems'].map(t => `<span class="seg ${t === on ? 'on' : ''}" style="flex:1;height:${opts.h || 24}px">${t}</span>`).join('')}</div>`;
+}
+function loopRow(on, h = 26) {
+  return `<div class="tray">${['In', 'Out', '½'].map(t => `<span class="seg" style="height:${h}px">${t}</span>`).join('')}
+    <span class="seg" style="flex:1;height:${h}px;font-family:GeistMono;font-weight:600;${on ? `background:${C.mint};color:#0c0c0f` : ''}">${icon('loop', 13)}4</span>
+    ${['×2', on ? 'Exit' : 'Reloop'].map(t => `<span class="seg" style="height:${h}px">${t}</span>`).join('')}</div>`;
+}
+function platter(d, size, o = {}) {
+  const tr = TRACK[d], c = size / 2, r = c - 4, ang = (tr.now / 1.8 % 1) * 360 - 90, done = tr.now / tr.len;
+  const p = a => [c + (r - 3) * Math.cos(a * Math.PI / 180), c + (r - 3) * Math.sin(a * Math.PI / 180)];
+  const [x0, y0] = p(-90), [x1, y1] = p(-90 + done * 360);
+  const mk = a => [c + r * 0.4 * Math.cos(a * Math.PI / 180), c + r * 0.4 * Math.sin(a * Math.PI / 180), c + (r - 12) * Math.cos(a * Math.PI / 180), c + (r - 12) * Math.sin(a * Math.PI / 180)];
+  const [m0, m1, m2, m3] = mk(ang);
+  let grooves = ''; for (let k = 0; k < 7; k++) grooves += `<circle cx="${c}" cy="${c}" r="${r * (0.48 + k * 0.07)}" fill="none" stroke="#1d1d24" stroke-width="1"/>`;
+  let ticks = ''; if (o.ticks) for (let k = 0; k < 60; k++) { const a = k * 6 * Math.PI / 180, r0 = r + 1, r1 = r + (k % 5 ? 3 : 6); ticks += `<line x1="${c + r0 * Math.cos(a)}" y1="${c + r0 * Math.sin(a)}" x2="${c + r1 * Math.cos(a)}" y2="${c + r1 * Math.sin(a)}" stroke="#34343d" stroke-width="1"/>`; }
+  return `<svg width="${size + (o.ticks ? 14 : 0)}" height="${size + (o.ticks ? 14 : 0)}" viewBox="${o.ticks ? -7 : 0} ${o.ticks ? -7 : 0} ${size + (o.ticks ? 14 : 0)} ${size + (o.ticks ? 14 : 0)}" style="flex:none">
+    <defs><radialGradient id="lbl${d}${size}" cx=".35" cy=".3" r=".9"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
+    ${ticks}<circle cx="${c}" cy="${c}" r="${r}" fill="#0b0b0e" stroke="#26262d" stroke-width="1.5"/>${grooves}
+    <path d="M${x0} ${y0} A${r - 3} ${r - 3} 0 ${done > 0.5 ? 1 : 0} 1 ${x1} ${y1}" stroke="${DECK[d]}" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <circle cx="${c}" cy="${c}" r="${r * 0.36}" fill="${alpha(DECK[d], 0.28)}"/><circle cx="${c}" cy="${c}" r="${r * 0.36}" fill="url(#lbl${d}${size})"/>
+    <line x1="${m0}" y1="${m1}" x2="${m2}" y2="${m3}" stroke="#f4f4f6" stroke-width="3.5" stroke-linecap="round"/>
+    <circle cx="${c}" cy="${c}" r="5" fill="#0c0c0f"/>
+    <text x="${c}" y="${c + r * 0.36 + 18}" text-anchor="middle" font-family="GeistMono" font-size="11" fill="#8a8a95">${clock(tr.now - tr.len, false)}</text>
+  </svg>`;
+}
+function art(d, s) { return `<div style="width:${s}px;height:${s}px;border-radius:${s > 40 ? 8 : 5}px;flex:none;background:${alpha(DECK[d], 0.18)};border:1px solid ${alpha(DECK[d], 0.35)};display:flex;align-items:center;justify-content:center;color:${DECK[d]};font-weight:700;font-size:${s * 0.38}px">${d}</div>`; }
+function keyChip(k, shifted) { return `<span class="chip mono" style="height:20px;font-size:11px;background:${alpha(C.accent, 0.12)};color:#a5c0ff">${k}</span>`; }
+</script>
+
+<script>
+/* ---------- 1 · Console ---------- */
+function design1() {
+  const deck = (d) => {
+    const tr = TRACK[d], right = d === 'B', play = true;
+    const tempoCol = `<div class="col" style="align-items:center;gap:5px;width:50px">
+      <span class="mono" style="font-size:11.5px;color:${tr.sync ? '#a5c0ff' : C.text2}">${tr.tempo >= 0 ? '+' : ''}${tr.tempo.toFixed(2)}%</span>
+      ${fader(0.5 - tr.tempo / 16, 150, { w: 32, cap: 18, center: true, capLine: DECK[d] })}
+      <span class="seg" style="height:20px;font-size:10px;border:1px solid ${C.line};padding:0 7px">±8%</span></div>`;
+    const body = `<div class="col f1" style="gap:7px">
+        <div class="col" style="gap:6px">${d === 'A' ? hotPads(tr, 46, true) : sizePads([0.25, 0.5, 1, 2, 4, 8, 16, 32], C.mint, 4, 46)}</div>
+        ${loopRow(d === 'B', 28)}
+      </div>`;
+    return `<div class="col" style="width:520px;height:440px;background:${C.surface};${right ? 'border-left' : 'border-right'}:1px solid ${C.line}">
+      <div class="row" style="height:58px;flex:none;gap:12px;padding:0 14px;border-bottom:1px solid ${C.lineSoft}">
+        ${art(d, 42)}
+        <div class="col f1" style="gap:3px"><span class="ell" style="font-size:15px;font-weight:600">${tr.title}</span><span style="color:${C.text3}">${tr.artist} · <span class="mono">${clock(tr.len)}</span></span></div>
+        <div class="col" style="align-items:flex-end;gap:3px">
+          <span class="mono" style="font-size:25px;font-weight:600;line-height:1;color:${tr.sync ? '#a5c0ff' : C.text}">${(tr.bpm * (1 + tr.tempo / 100)).toFixed(2)}</span>
+          <span class="row" style="gap:6px"><span class="mono" style="font-size:11px;color:${C.text3}">${tr.bpm.toFixed(2)} BPM</span>${keyChip(tr.key)}</span>
+        </div>
+      </div>
+      <div style="padding:8px 14px 0"><canvas data-over="${d}" style="width:100%;height:32px;border-radius:4px"></canvas>
+        <div class="row mono" style="justify-content:space-between;font-size:12px;margin-top:4px;color:${C.text2}"><span>${clock(tr.now, true)}</span><span style="color:${C.text4}">${Math.floor(tr.now * tr.bpm / 240) + 1}.${Math.floor(tr.now * tr.bpm / 60) % 4 + 1}</span><span>${clock(tr.now - tr.len, true)}</span></div></div>
+      <div style="padding:8px 14px 0">${tabs(d === 'A' ? 'Hot Cue' : 'Loop', { h: 26 })}</div>
+      <div class="row f1" style="gap:12px;padding:8px 14px 0;align-items:flex-start;${right ? 'flex-direction:row-reverse' : ''}">
+        <div>${platter(d, 166, { ticks: true })}</div>
+        ${body}
+        ${tempoCol}
+      </div>
+      <div class="row" style="height:60px;flex:none;gap:10px;padding:0 14px;border-top:1px solid ${C.lineSoft}">
+        <span class="round" style="width:46px;height:46px;border-color:${C.amber};color:${C.amber}">${icon('cue', 19)}</span>
+        <span class="round" style="width:46px;height:46px;border-color:${C.mint};color:${C.mint}">${icon(play ? 'pause' : 'play', 19)}</span>
+        <span class="seg" style="height:32px;padding:0 14px;${tr.sync ? `background:${C.accent};color:#fff` : `border:1px solid ${C.line}`}">${icon('sync', 14)}Sync</span>
+        <span class="seg" style="height:32px;padding:0 12px;border:1px solid ${C.line};${d === 'A' ? `color:#a5c0ff;background:${alpha(C.accent, 0.14)}` : ''}">Lead</span>
+        <div class="f1"></div>
+        <span class="seg on" style="height:32px;width:34px;padding:0;color:#a5c0ff">${icon('lock', 15)}</span>
+        <div class="tray"><span class="seg" style="height:26px;padding:0 8px">♭</span><span class="seg mono" style="height:26px;padding:0 4px;color:${C.text3}">Key</span><span class="seg" style="height:26px;padding:0 8px">♯</span></div>
+        <span class="seg" style="height:32px;border:1px solid ${C.line}">Slip</span><span class="seg" style="height:32px;border:1px solid ${C.line}">Rev</span>
+      </div>
+    </div>`;
+  };
+  // The mixer: a column a channel, labels between them, master on the right.
+  const lbl = t => `<div style="width:44px;text-align:center" class="cap">${t}</div>`;
+  const chKnob = (v, col, bip, kill) => `<div style="width:64px;display:flex;justify-content:center;position:relative">${knob(v, 38, col, bip, { body: '#2f2f38' })}${kill ? `<span style="position:absolute;right:2px;top:-2px;font-size:8.5px;font-weight:700;color:${C.red}">KILL</span>` : ''}</div>`;
+  const row = (t, a, b) => `<div class="row" style="height:42px;justify-content:center">${a}${lbl(t)}${b}</div>`;
+  const mixer = `<div class="col" style="width:400px;height:440px;background:linear-gradient(#17171c,#131317);padding:10px 12px 0">
+    <div class="row" style="justify-content:center;gap:0;height:24px">
+      <div style="width:64px;text-align:center"><b style="color:${C.accent}">A</b></div>${lbl('')}<div style="width:64px;text-align:center"><b style="color:${C.coral}">B</b></div>
+      <div class="f1"></div><span class="cap" style="width:84px;text-align:center">MASTER</span></div>
+    <div class="row" style="align-items:flex-start;gap:0">
+      <div class="col">
+        ${row('TRIM', chKnob(0.55, C.text2, true), chKnob(0.5, C.text3, true))}
+        ${row('HI', chKnob(0.5, C.text3, true), chKnob(0.62, C.text2, true))}
+        ${row('MID', chKnob(0.5, C.text3, true), chKnob(0.5, C.text3, true))}
+        ${row('LOW', chKnob(0.5, C.text3, true), chKnob(-1, C.red, true, true))}
+        ${row('FILTER', chKnob(0, C.text3, true), chKnob(-0.35, C.accent, true))}
+        <div class="row" style="height:34px;justify-content:center">
+          <div style="width:64px;display:flex;gap:4px;justify-content:center"><span class="chip" style="height:20px;background:${C.accent};color:#fff">FX1</span><span class="chip" style="height:20px;border:1px solid ${C.line};color:${C.text4}">FX2</span></div>
+          ${lbl('FX')}
+          <div style="width:64px;display:flex;gap:4px;justify-content:center"><span class="chip" style="height:20px;border:1px solid ${C.line};color:${C.text4}">FX1</span><span class="chip" style="height:20px;border:1px solid ${C.line};color:${C.text4}">FX2</span></div>
+        </div>
+        <div class="row" style="height:34px;justify-content:center">
+          <div style="width:64px;display:flex;justify-content:center"><span class="round" style="width:42px;height:26px;border-radius:6px;border-width:1px">${icon('phones', 14)}</span></div>${lbl('CUE')}
+          <div style="width:64px;display:flex;justify-content:center"><span class="round" style="width:42px;height:26px;border-radius:6px;border-width:1px;background:${C.amber};border-color:${C.amber};color:#0c0c0f">${icon('phones', 14)}</span></div>
+        </div>
+        <div class="row" style="justify-content:center;gap:6px;height:108px;align-items:flex-end">
+          ${meter(0.82, 0.8, 100, { segs: 16 })}${fader(0.92, 102, { w: 34, cap: 18 })}<div style="width:24px"></div>${fader(0.7, 102, { w: 34, cap: 18 })}${meter(0.66, 0.7, 100, { segs: 16 })}
+        </div>
+      </div>
+      <div class="f1"></div>
+      <div class="col" style="width:84px;align-items:center;gap:10px;padding-top:4px;border-left:1px solid ${C.lineSoft}">
+        <div class="col" style="align-items:center;gap:3px">${knob(0.5, 40, C.text, true)}<span class="cap">Level</span></div>
+        <div class="row" style="gap:6px;align-items:flex-end">${meter(0.86, 0.84, 150, { segs: 24, w: 5 })}<div class="col mono" style="height:150px;justify-content:space-between;font-size:8.5px;color:${C.text4}"><span>+3</span><span>0</span><span>−6</span><span>−12</span><span>−24</span><span>−48</span></div></div>
+        <span class="mono" style="font-size:9.5px;color:${C.amber}">LIM −0.4</span>
+        <div class="row" style="gap:8px"><div class="col" style="align-items:center;gap:2px">${knob(0.5, 30, C.amber)}<span class="cap">Cue mix</span></div></div>
+        <div class="col" style="align-items:center;gap:2px">${knob(0.7, 30, C.amber)}<span class="cap">Phones</span></div>
+      </div>
+    </div>
+    <div class="row" style="justify-content:center;gap:10px;margin-top:6px">
+      <span class="mono" style="font-size:10px;color:${C.accent};font-weight:600">A</span>${xfader(-0.15, 200)}<span class="mono" style="font-size:10px;color:${C.coral};font-weight:600">B</span>
+      <span class="seg" style="height:22px;font-size:10.5px;border:1px solid ${C.line}">Smooth</span>
+    </div>
+  </div>`;
+  const ghost = `<div class="ghost" style="left:1060px;top:186px">${art('B', 22)}<span>Yours</span><span class="mono" style="color:${C.text3}">122.0 · 3A</span><span class="ghost-cursor" style="position:absolute;left:-14px;top:-14px">${'<svg width="18" height="18" viewBox="0 0 24 24">' + I.pointer + '</svg>'}</span></div>`;
+  const dropRow = `<div style="position:absolute;inset:0 0 0 66px;border:2px solid ${C.coral};background:${alpha(C.coral, 0.1)};display:flex;align-items:center;justify-content:center"><span style="padding:8px 14px;border-radius:8px;background:#131317f0;border:1px solid ${C.lineStrong};font-weight:600;font-size:13px">Drop to load on <span style="color:${C.coral}">B</span> · replaces That Night</span></div>`;
+  return `<div class="col" style="height:900px">${topBar()}
+    ${wrow('A', 84)}${wrow('B', 84, dropRow)}
+    <div class="row" style="align-items:stretch">${deck('A')}${mixer}${deck('B')}</div>
+    ${fx()}${library({ sel: 'Yours' })}${ghost}</div>`;
+}
+</script>
+
+<script>
+/* ---------- 2 · Stage ---------- */
+function design2() {
+  const strip = (d) => {
+    const tr = TRACK[d];
+    return `<div style="position:relative;border-bottom:1px solid ${C.line}">
+      <div class="row" style="height:46px;gap:10px;padding:0 12px;background:${C.surface};border-bottom:1px solid ${C.lineSoft}">
+        <span style="width:4px;height:26px;border-radius:2px;background:${DECK[d]}"></span>
+        <b style="color:${DECK[d]};font-size:15px;width:14px">${d}</b>
+        <span class="round" style="width:32px;height:32px;border-color:${C.amber};color:${C.amber}">${icon('cue', 15)}</span>
+        <span class="round" style="width:32px;height:32px;border-color:${C.mint};color:${C.mint}">${icon('pause', 15)}</span>
+        <span class="seg" style="height:28px;${tr.sync ? `background:${C.accent};color:#fff` : `border:1px solid ${C.line}`}">Sync</span>
+        <span class="seg" style="height:28px;border:1px solid ${C.line};${d === 'A' ? 'color:#a5c0ff' : ''}">Lead</span>
+        <div class="col f1" style="gap:1px;margin-left:6px"><span class="ell" style="font-size:14px;font-weight:600">${tr.title}</span><span style="color:${C.text3};font-size:11.5px">${tr.artist}</span></div>
+        <div class="col" style="align-items:flex-end"><span class="cap">Time left</span><span class="mono" style="font-size:16px">${clock(tr.now - tr.len, true)}</span></div>
+        <div class="col" style="align-items:flex-end;width:62px"><span class="cap">Key</span><span class="mono" style="font-size:16px;color:#a5c0ff">${tr.key}</span></div>
+        <div class="col" style="align-items:flex-end;width:74px"><span class="cap">Tempo</span><span class="mono" style="font-size:16px">${tr.tempo >= 0 ? '+' : ''}${tr.tempo.toFixed(2)}%</span></div>
+        <div class="col" style="align-items:flex-end;width:92px"><span class="cap">BPM</span><span class="mono" style="font-size:22px;font-weight:600;line-height:1;color:${tr.sync ? '#a5c0ff' : C.text}">${(tr.bpm * (1 + tr.tempo / 100)).toFixed(2)}</span></div>
+        <span class="seg on" style="width:30px;padding:0;color:#a5c0ff">${icon('lock', 14)}</span>
+        <span class="seg" style="border:1px solid ${C.line}">Slip</span>
+      </div>
+      <div class="row"><div class="wl" style="height:120px"><div class="dots">${[0, 1, 2, 3].map(i => `<i style="${i === Math.floor(tr.now * tr.bpm / 60) % 4 ? `background:${i ? C.text2 : DECK[d]}` : ''}"></i>`).join('')}</div><span class="mono" style="font-size:10.5px;color:${C.text3}">${Math.floor(tr.now * tr.bpm / 240) + 1}.${Math.floor(tr.now * tr.bpm / 60) % 4 + 1}</span></div>
+      <canvas class="f1" data-wave="${d}" style="height:120px"></canvas></div>
+      <div class="row" style="height:24px;background:${C.lane}"><span class="mono" style="width:66px;text-align:center;font-size:10.5px;color:${C.text3}">${clock(tr.now)}</span><canvas class="f1" data-over="${d}" data-noph="0" style="height:24px"></canvas><span style="width:10px"></span></div>
+    </div>`;
+  };
+  const pads16 = (d) => {
+    const tr = TRACK[d];
+    const pads = d === 'A' ? `<div class="col" style="gap:6px">${hotPads(tr, 38, true)}${sizePads([0.25, 0.5, 1, 2, 4, 8, 16, 32], C.mint, null, 38)}</div>`
+                           : `<div class="col" style="gap:6px">${stemPads(38)}${sizePads([1 / 32, 1 / 16, 1 / 8, 1 / 4, 0.5, 1, 2, 4], C.teal, null, 38)}</div>`;
+    return `<div class="col f1" style="gap:8px;padding:10px 12px">
+      <div class="row" style="gap:8px">${tabs(d === 'A' ? 'Hot Cue' : 'Stems', { style: 'flex:1' })}<span class="cap">${d === 'A' ? 'Cues + Loops' : 'Stems + Rolls'}</span></div>
+      ${pads}${loopRow(false, 24)}</div>`;
+  };
+  const tempo = (d) => `<div class="col" style="width:58px;align-items:center;gap:6px;padding-top:12px;${d === 'A' ? 'border-right' : 'border-left'}:1px solid ${C.lineSoft}">
+      <span class="cap">Pitch</span>${fader(0.5 - TRACK[d].tempo / 16, 196, { w: 32, cap: 18, center: true, capLine: DECK[d] })}<span class="mono" style="font-size:10.5px;color:${C.text3}">±8</span></div>`;
+  const mixer = `<div class="col" style="width:380px;padding:10px 14px;gap:8px;background:${C.strip};border-left:1px solid ${C.line};border-right:1px solid ${C.line}">
+      <div class="row" style="gap:0">
+        ${['A', 'B'].map((d, i) => `<div class="col" style="flex:1;gap:7px;align-items:center;${i ? '' : `border-right:1px solid ${C.lineSoft}`}">
+          <div class="row" style="gap:5px;justify-content:center"><b style="color:${DECK[d]}">${d}</b><span class="cap">${i ? 'B side' : 'A side'}</span></div>
+          <div class="row" style="gap:6px">${[['Trim', 0.1], ['Hi', i ? 0.25 : 0], ['Mid', 0], ['Low', i ? -1 : 0], ['Flt', i ? -0.3 : 0]].map(([n, v]) => `<div class="col" style="align-items:center;gap:2px">${knob(v, 28, v === -1 ? C.red : v ? (n === 'Flt' ? C.accent : C.text2) : C.text3, true)}<span class="cap" style="font-size:8.5px">${n}</span></div>`).join('')}</div>
+          <div class="row" style="gap:6px;align-items:flex-end">${meter(i ? 0.7 : 0.84, i ? 0.66 : 0.8, 96, { segs: 14 })}${fader(i ? 0.72 : 0.94, 100, { w: 30, cap: 16 })}
+            <div class="col" style="gap:4px"><span class="chip" style="height:22px;width:34px;justify-content:center;${i ? `background:${C.amber};color:#0c0c0f` : `border:1px solid ${C.line};color:${C.text3}`}">${icon('phones', 12)}</span>
+            <span class="chip" style="height:20px;width:34px;justify-content:center;${i ? `border:1px solid ${C.line};color:${C.text4}` : `background:${C.accent};color:#fff`}">FX1</span><span class="chip" style="height:20px;width:34px;justify-content:center;${i ? `background:${C.accent};color:#fff` : `border:1px solid ${C.line};color:${C.text4}`}">FX2</span></div></div>
+        </div>`).join('')}
+      </div>
+      <div class="row" style="justify-content:center;gap:8px"><b style="color:${C.accent};font-size:10px">A</b>${xfader(0.1, 200, { cap: 20 })}<b style="color:${C.coral};font-size:10px">B</b></div>
+    </div>`;
+  return `<div class="col" style="height:900px">${topBar({ analysing: true })}${strip('A')}${strip('B')}
+    <div class="row" style="align-items:stretch;height:268px;background:${C.surface};border-bottom:1px solid ${C.line}">${tempo('A')}${pads16('A')}${mixer}${pads16('B')}${tempo('B')}</div>
+    ${fx({ fx2on: true, fx2: 'Flanger' }).replace('height: 56px', '')}${library({ match: true, analysing: true, sel: 'Yours' })}</div>`;
+}
+</script>
+
+<script>
+/* ---------- 3 · Studio ---------- */
+function design3() {
+  const ring = (d, size) => {
+    const tr = TRACK[d], c = size / 2, beat = tr.now * tr.bpm / 60, inBar = beat % 4, r = c - 8;
+    let s = `<svg width="${size}" height="${size}" style="flex:none">`;
+    for (let k = 0; k < 16; k++) { const a0 = (k / 16) * 360 - 90 + 2, a1 = ((k + 1) / 16) * 360 - 90 - 2; const P = (a, rr) => [c + rr * Math.cos(a * Math.PI / 180), c + rr * Math.sin(a * Math.PI / 180)];
+      const [x0, y0] = P(a0, r), [x1, y1] = P(a1, r); const cur = Math.floor((beat % 16)) === k; const past = k < Math.floor(beat % 16);
+      s += `<path d="M${x0} ${y0} A${r} ${r} 0 0 1 ${x1} ${y1}" stroke="${cur ? DECK[d] : past ? alpha(DECK[d], 0.35) : C.raised}" stroke-width="${k % 4 === 0 ? 7 : 5}" fill="none" stroke-linecap="butt"/>`; }
+    s += `<text x="${c}" y="${c - 4}" text-anchor="middle" font-family="GeistMono" font-size="22" font-weight="600" fill="#f4f4f6">${Math.floor(beat / 4) + 1}.${Math.floor(inBar) + 1}</text><text x="${c}" y="${c + 16}" text-anchor="middle" font-family="Geist" font-size="10" fill="#8a8a95">bar · beat of 16</text></svg>`;
+    return s;
+  };
+  const card = (d) => {
+    const tr = TRACK[d], padsMode = d === 'A' ? 'Roll' : 'Hot Cue';
+    return `<div class="col" style="flex:1;min-width:0;background:${C.surface};border-radius:10px;border:1px solid ${C.line};position:relative;overflow:hidden">
+      <div class="row" style="height:60px;gap:12px;padding:0 14px;border-bottom:1px solid ${C.lineSoft}">
+        <span class="chip" style="height:24px;width:24px;justify-content:center;font-size:12px;background:${alpha(DECK[d], 0.16)};color:${DECK[d]}">${d}</span>
+        <div class="col f1" style="gap:2px"><span class="ell" style="font-size:14.5px;font-weight:600">${tr.title}</span><span style="color:${C.text3}">${tr.artist}</span></div>
+        <div class="row" style="gap:16px">
+          <div class="col" style="align-items:flex-end"><span class="cap">Key</span><span class="mono" style="font-size:14px;color:#a5c0ff">${tr.key}</span></div>
+          <div class="col" style="align-items:flex-end"><span class="cap">Tempo</span><span class="mono" style="font-size:14px">${tr.tempo >= 0 ? '+' : ''}${tr.tempo.toFixed(2)}%</span></div>
+          <div class="col" style="align-items:flex-end"><span class="cap">BPM</span><span class="mono" style="font-size:20px;font-weight:600;line-height:1.1;color:${tr.sync ? '#a5c0ff' : C.text}">${(tr.bpm * (1 + tr.tempo / 100)).toFixed(2)}</span></div>
+        </div>
+      </div>
+      <div style="padding:10px 14px 0"><canvas data-over="${d}" style="width:100%;height:34px;border-radius:4px"></canvas>
+        <div class="row mono" style="justify-content:space-between;font-size:11.5px;margin-top:4px;color:${C.text3}"><span>${clock(tr.now, true)}</span><span>${clock(tr.now - tr.len, true)}</span></div></div>
+      <div class="row f1" style="gap:16px;padding:10px 14px;align-items:flex-start">
+        <div class="col" style="align-items:center;gap:8px">${ring(d, 150)}
+          <div class="row" style="gap:6px"><span class="seg on" style="height:26px;color:#a5c0ff">${icon('lock', 13)}Keylock</span><span class="seg" style="height:26px;border:1px solid ${C.line}">Slip</span></div></div>
+        <div class="col f1" style="gap:8px">
+          <span class="cap">Pads</span>${tabs(padsMode)}
+          <div class="col" style="gap:6px">${d === 'A' ? sizePads([1 / 32, 1 / 16, 1 / 8, 1 / 4, 0.5, 1, 2, 4], C.teal, 0.25, 40) : hotPads(tr, 40, true)}</div>
+          <span class="cap" style="margin-top:2px">Loop</span>${loopRow(false)}
+        </div>
+        <div class="col" style="align-items:center;gap:6px;width:46px"><span class="cap">Tempo</span>${fader(0.5 - tr.tempo / 16, 200, { w: 30, cap: 18, center: true, capLine: DECK[d] })}<span class="mono" style="font-size:10px;color:${C.text3}">±8</span></div>
+      </div>
+      <div class="row" style="height:58px;gap:10px;padding:0 14px;border-top:1px solid ${C.lineSoft}">
+        <span class="round" style="width:42px;height:42px;border-color:${C.amber};color:${C.amber}">${icon('cue', 17)}</span>
+        <span class="round" style="width:42px;height:42px;border-color:${C.mint};color:${C.mint}">${icon('pause', 17)}</span>
+        <span class="seg" style="height:30px;${tr.sync ? `background:${C.accent};color:#fff` : `border:1px solid ${C.line}`}">Sync</span>
+        <span class="seg" style="height:30px;border:1px solid ${C.line};${d === 'A' ? 'color:#a5c0ff' : ''}">Lead</span>
+        <div class="f1"></div>
+        <div class="tray"><span class="seg" style="height:24px;padding:0 8px">♭</span><span class="seg mono" style="height:24px;padding:0 4px;color:${C.text3}">Key</span><span class="seg" style="height:24px;padding:0 8px">♯</span></div>
+        <span class="seg" style="height:30px;border:1px solid ${C.line}">Rev</span>
+      </div>
+      ${d === 'B' ? `<div class="drop"><div class="say" style="flex-direction:column;align-items:center;gap:6px;padding:14px 18px"><span style="font-size:15px">Load on <span style="color:${C.coral}">B</span></span><span style="font-weight:400;color:${C.text3};font-size:12px">Yours · <span class="mono">122.0 BPM · 3A</span> · That Night comes off</span></div></div>` : ''}
+    </div>`;
+  };
+  const strip = (d, v) => `<div class="col" style="width:104px;align-items:center;gap:5px;padding:8px 0;background:${C.strip};border-radius:8px;border:1px solid ${C.line}">
+      <span class="chip" style="height:20px;width:26px;justify-content:center;background:${alpha(DECK[d], 0.16)};color:${DECK[d]}">${d}</span>
+      ${[['Trim', v.t], ['High', v.h], ['Mid', v.m], ['Low', v.l]].map(([n, x]) => `<div class="row" style="gap:7px;width:84px;justify-content:space-between"><span class="cap" style="width:30px">${n}</span>${knob(x, 30, x === -1 ? C.red : x ? C.text2 : C.text4, true)}</div>`).join('')}
+      <div class="row" style="gap:7px;width:84px;justify-content:space-between"><span class="cap" style="width:30px">Filter</span>${knob(v.f, 30, v.f ? C.accent : C.text4, true)}</div>
+      <div class="row" style="gap:4px"><span class="chip" style="height:20px;${v.fx1 ? `background:${C.accent};color:#fff` : `border:1px solid ${C.line};color:${C.text4}`}">FX1</span><span class="chip" style="height:20px;border:1px solid ${C.line};color:${C.text4}">FX2</span></div>
+      <span class="chip" style="height:24px;width:60px;justify-content:center;gap:5px;${v.cue ? `background:${C.amber};color:#0c0c0f` : `border:1px solid ${C.line};color:${C.text3}`}">${icon('phones', 12)}Cue</span>
+      <div class="row" style="gap:5px;align-items:flex-end">${fader(v.fader, 100, { w: 30, cap: 18 })}${meter(v.lv, v.lv - 0.04, 98, { segs: 16 })}<div class="col mono" style="height:98px;justify-content:space-between;font-size:8px;color:${C.text4}"><span>0</span><span>−12</span><span>−24</span><span>−∞</span></div></div>
+      <span class="mono" style="font-size:10px;color:${C.text3}">${v.fader > 0.9 ? '0.0' : '−6.2'} dB</span>
+    </div>`;
+  const mixer = `<div class="col" style="width:360px;gap:8px;padding:0 4px">
+      <div class="row" style="gap:8px;justify-content:center;align-items:flex-start">
+        ${strip('A', { t: 0.1, h: 0, m: 0, l: 0, f: 0, fx1: true, cue: false, fader: 0.94, lv: 0.84 })}
+        <div class="col" style="width:112px;align-items:center;gap:10px;padding:10px 0;background:${C.strip};border-radius:8px;border:1px solid ${C.line}">
+          <span class="cap">Master</span>${knob(0.5, 40, C.text, true)}
+          <div class="row" style="gap:5px;align-items:flex-end">${meter(0.86, 0.83, 130, { segs: 22, w: 5 })}</div>
+          <span class="mono" style="font-size:9.5px;color:${C.amber}">Limiting −0.4</span>
+          <div class="row" style="gap:10px"><div class="col" style="align-items:center;gap:2px">${knob(0.5, 28, C.amber)}<span class="cap" style="font-size:8.5px">Cue mix</span></div><div class="col" style="align-items:center;gap:2px">${knob(0.7, 28, C.amber)}<span class="cap" style="font-size:8.5px">Phones</span></div></div>
+        </div>
+        ${strip('B', { t: 0, h: 0.2, m: 0, l: -1, f: -0.3, fx1: false, cue: true, fader: 0.72, lv: 0.7 })}
+      </div>
+      <div class="row" style="justify-content:center;gap:10px;padding:4px 8px;background:${C.strip};border-radius:8px;border:1px solid ${C.line}"><span class="cap" style="color:${C.accent}">A</span>${xfader(-0.2, 240)}<span class="cap" style="color:${C.coral}">B</span></div>
+    </div>`;
+  const ghost = `<div class="ghost" style="left:1150px;top:560px"><span style="position:absolute;left:-14px;top:-14px"><svg width="18" height="18" viewBox="0 0 24 24">${I.pointer}</svg></span>${icon('wave', 14, 'color:#8a8a95')}<span>Yours</span><span class="mono" style="color:${C.text3}">122.0 · 3A</span></div>`;
+  return `<div class="col" style="height:900px">${topBar()}
+    ${wrow('A', 76)}${wrow('B', 76)}
+    <div class="row" style="align-items:stretch;gap:10px;padding:10px;height:462px">${card('A')}${mixer}${card('B')}</div>
+    ${fx()}${library({ crate: true, sel: 'Yours' })}${ghost}</div>`;
+}
+</script>
+
+<script>
+/* ---------- 4 · Vertical ---------- */
+function design4() {
+  const deck = (d) => {
+    const tr = TRACK[d], right = d === 'B';
+    const pads = d === 'A' ? sizePads([-32, -16, -4, -1, 1, 4, 16, 32], C.text2, null, 40, b => (b < 0 ? '−' : '+') + beatText(Math.abs(b)))
+                           : hotPads(tr, 40, true);
+    return `<div class="col" style="width:500px;background:${C.surface};${right ? 'border-left' : 'border-right'}:1px solid ${C.line};position:relative">
+      <div class="row" style="height:60px;gap:12px;padding:0 14px;border-bottom:1px solid ${C.lineSoft}">
+        ${art(d, 40)}
+        <div class="col f1" style="gap:2px"><span class="ell" style="font-size:15px;font-weight:600">${tr.title}</span><span style="color:${C.text3}">${tr.artist}</span></div>
+        <div class="col" style="align-items:flex-end;position:relative">
+          <span class="mono" style="font-size:24px;font-weight:600;line-height:1;padding:2px 4px;border-radius:5px;${d === 'B' ? `background:${C.raised}` : ''};color:${tr.sync ? '#a5c0ff' : C.text}">${(tr.bpm * (1 + tr.tempo / 100)).toFixed(2)}</span>
+          <span class="row" style="gap:6px"><span class="mono" style="font-size:11px;color:${C.text3}">${tr.tempo >= 0 ? '+' : ''}${tr.tempo.toFixed(2)}%</span>${keyChip(tr.key)}</span>
+        </div>
+      </div>
+      ${d === 'B' ? `<div class="col" style="gap:7px;padding:9px 14px;border-bottom:1px solid ${C.lineSoft};background:${C.card}">
+          <div class="row" style="justify-content:space-between"><span class="cap">Beat grid</span><span class="mono" style="font-size:11px;color:${C.text2}">120.00 BPM · downbeat 0.214 s</span></div>
+          <div class="tray">${['÷2', '×2', '−.01', '+.01', '◀', '▶'].map(t => `<span class="seg" style="height:24px;padding:0 9px">${t}</span>`).join('')}<span class="seg" style="flex:1;height:24px">Downbeat here</span><span class="seg on" style="height:24px">Done</span></div></div>`
+        : `<div style="padding:8px 14px 0"><canvas data-over="${d}" style="width:100%;height:36px;border-radius:4px"></canvas><div class="row mono" style="justify-content:space-between;font-size:11.5px;margin:4px 0 6px;color:${C.text3}"><span>${clock(tr.now, true)}</span><span>${clock(tr.now - tr.len, true)}</span></div></div>`}
+      <div class="row" style="gap:14px;padding:10px 14px 0;align-items:center;justify-content:center;${right ? 'flex-direction:row-reverse' : ''}">
+        <div class="col" style="align-items:center;gap:6px;width:48px"><span class="mono" style="font-size:11px;color:${tr.sync ? '#a5c0ff' : C.text2}">${tr.tempo >= 0 ? '+' : ''}${tr.tempo.toFixed(1)}%</span>${fader(0.5 - tr.tempo / 16, 200, { w: 32, cap: 18, center: true, capLine: DECK[d] })}<span class="mono" style="font-size:10px;color:${C.text4}">±8</span></div>
+        ${platter(d, 214, { ticks: true })}
+        <div class="col" style="gap:8px;width:120px">
+          <span class="round" style="width:56px;height:56px;border-color:${C.amber};color:${C.amber}">${icon('cue', 22)}</span>
+          <span class="round" style="width:56px;height:56px;border-color:${C.mint};color:${C.mint}">${icon('pause', 22)}</span>
+          <span class="seg" style="height:30px;${tr.sync ? `background:${C.accent};color:#fff` : `border:1px solid ${C.line}`}">Sync</span>
+          <span class="seg" style="height:30px;border:1px solid ${C.line};${d === 'A' ? 'color:#a5c0ff' : ''}">Lead</span>
+        </div>
+      </div>
+      <div class="col" style="gap:7px;padding:10px 14px 0">${tabs(d === 'A' ? 'Jump' : 'Hot Cue')}<div class="col" style="gap:6px">${pads}</div>
+        <div class="row" style="gap:8px">${loopRow(false)}<span class="seg on" style="height:30px;color:#a5c0ff">${icon('lock', 13)}</span><span class="seg" style="height:30px;border:1px solid ${C.line}">Slip</span></div></div>
+    </div>`;
+  };
+  const center = `<div class="col" style="width:440px;background:${C.lane}">
+      <div class="row" style="height:330px;gap:0;justify-content:center;border-bottom:1px solid ${C.line}">
+        <div class="col" style="width:150px;align-items:center"><div class="row" style="height:26px;gap:6px"><b style="color:${C.accent}">A</b><span class="cap" style="color:#a5c0ff">Lead</span></div><canvas data-wv="A" style="width:150px;height:304px"></canvas></div>
+        <div class="col" style="width:60px;align-items:center;justify-content:center;gap:6px;background:${C.headers};border-left:1px solid ${C.line};border-right:1px solid ${C.line}">
+          ${[0, 1, 2, 3].map(i => `<span style="width:30px;height:8px;border-radius:2px;background:${i === 1 ? C.text2 : C.raised}"></span>`).join('')}
+          <span class="mono" style="margin-top:8px;font-size:10px;color:${C.text3}">phase</span><span class="mono" style="font-size:12px;color:${C.mint}">0.00</span></div>
+        <div class="col" style="width:150px;align-items:center"><div class="row" style="height:26px;gap:6px"><b style="color:${C.coral}">B</b><span class="cap">Sync</span></div><canvas data-wv="B" style="width:150px;height:304px"></canvas></div>
+      </div>
+      <div class="col f1" style="padding:8px 14px;gap:6px;background:${C.strip}">
+        <div class="row" style="gap:0;justify-content:center">
+          ${['A', 'B'].map((d, i) => `<div class="row" style="gap:8px;align-items:flex-end;${i ? 'flex-direction:row-reverse' : ''}">
+            <div class="col" style="gap:4px">${[['Hi', i ? 0.2 : 0], ['Mid', 0], ['Low', i ? -1 : 0]].map(([n, v]) => `<div class="row" style="gap:5px;${i ? 'flex-direction:row-reverse' : ''}">${knob(v, 28, v === -1 ? C.red : v ? C.text2 : C.text4, true)}<span class="cap" style="width:22px;${i ? 'text-align:right' : ''}">${n}</span></div>`).join('')}</div>
+            <div class="col" style="gap:4px;align-items:center">${knob(i ? -0.3 : 0, 28, i ? C.accent : C.text4, true)}<span class="cap" style="font-size:8.5px">Filter</span><span class="chip" style="height:20px;${i ? `background:${C.amber};color:#0c0c0f` : `border:1px solid ${C.line};color:${C.text3}`}">${icon('phones', 11)}</span></div>
+            <div class="row" style="gap:4px;align-items:flex-end">${meter(i ? 0.7 : 0.84, i ? 0.66 : 0.8, 108, { segs: 16 })}${fader(i ? 0.72 : 0.94, 112, { w: 30, cap: 16 })}</div>
+          </div>${i ? '' : `<div class="col" style="width:58px;align-items:center;gap:6px">${knob(0.5, 32, C.text, true)}<span class="cap">Master</span>${meter(0.86, 0.83, 70, { segs: 12, w: 4 })}</div>`}`).join('')}
+        </div>
+        <div class="row" style="justify-content:center;gap:8px"><b style="color:${C.accent};font-size:10px">A</b>${xfader(0.05, 220, { cap: 20 })}<b style="color:${C.coral};font-size:10px">B</b></div>
+      </div>
+    </div>`;
+  return `<div class="col" style="height:900px">${topBar()}
+    <div class="row" style="align-items:stretch;height:600px;border-bottom:1px solid ${C.line}">${deck('A')}${center}${deck('B')}</div>
+    ${fx({ fx2on: true, fx2: 'Flanger' })}${library({ sel: 'Yours' })}</div>`;
+}
+</script>
+
+<script>
+const designs = [design1, design2, design3, design4];
+function show(i) {
+  document.querySelectorAll('.gallery-nav button').forEach(b => b.classList.toggle('on', +b.dataset.d === i));
+  document.getElementById('cap').innerHTML = CAPS[i];
+  const f = document.getElementById('frame');
+  f.innerHTML = designs[i]();
+  requestAnimationFrame(() => {
+    f.querySelectorAll('canvas[data-wave]').forEach(c => drawWave(c, TRACK[c.dataset.wave], { color: DECK[c.dataset.wave], secs: 10 }));
+    f.querySelectorAll('canvas[data-over]').forEach(c => drawOverview(c, TRACK[c.dataset.over], { color: DECK[c.dataset.over] }));
+    f.querySelectorAll('canvas[data-wv]').forEach(c => drawWaveV(c, TRACK[c.dataset.wv], { color: DECK[c.dataset.wv], secs: 7, at: 0.72 }));
+  });
+  fit(); history.replaceState(null, '', '#' + (i + 1));
+}
+function fit() { const f = document.getElementById('frame'); const s = Math.min(1, (window.innerWidth - 36) / 1440); f.style.transform = `scale(${s})`; f.parentElement.style.height = (900 * s + 40) + 'px'; }
+window.addEventListener('resize', fit);
+document.querySelectorAll('.gallery-nav button').forEach(b => b.onclick = () => show(+b.dataset.d));
+document.fonts.ready.then(() => show(Math.max(0, (parseInt(location.hash.slice(1)) || 1) - 1)));
+</script>
+</body>
+</html>
