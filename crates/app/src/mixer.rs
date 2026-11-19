@@ -18,7 +18,7 @@ use crate::{
 };
 
 /// The crossfader card's height.
-const XF_H: f32 = 48.0;
+const XF_H: f32 = 42.0;
 
 /// A channel's knobs' sizes: trim, each EQ band, the filter.
 #[derive(Clone, Copy, Debug)]
