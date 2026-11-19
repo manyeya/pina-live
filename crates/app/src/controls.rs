@@ -361,7 +361,8 @@ impl Live {
     /// A vertical fader `h` tall: its cap where it's set, dragged anywhere on it.
     pub fn fader(&self, ctl: Ctl, h: f32, w: f32, cx: &mut Context<Self>) -> Div {
         let (lo, hi, _) = ctl.range();
-        let v = (self.ctl_value(ctl) - lo) / (hi - lo);
+        // Held at its end past its range (sync can take the tempo past the pitch fader's ±).
+        let v = ((self.ctl_value(ctl) - lo) / (hi - lo)).clamp(0.0, 1.0);
         let tempo = matches!(ctl, Ctl::Tempo(_));
         // The pitch fader's faster end is toward you (its bottom).
         let at = if tempo { v } else { 1.0 - v };

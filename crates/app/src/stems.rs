@@ -28,18 +28,57 @@ use crate::{
 
 pub const STEM_COLORS: [u32; STEMS] = [PINK, AMBER, SKY, MINT];
 
-/// The model to part tracks with: of those added, the one that gives the most of vocals, drums
-/// and bass (then the most stems).
-pub fn best_model() -> Option<Model> {
-    let (found, _) = separate::models(&separate::folder());
-    found.into_iter().max_by_key(|m| {
-        let s = &m.about.stems;
-        let wanted = ["vocals", "drums", "bass"]
-            .iter()
-            .filter(|w| s.iter().any(|x| x.eq_ignore_ascii_case(w)))
-            .count();
-        (wanted, s.len())
-    })
+/// What to part a track into. Asking for less saves time only by the model: one pass of a model
+/// gives all its stems, so a part or two goes to the quickest model that gives them, and all
+/// four to the finest. What wasn't asked for isn't kept: it plays as the rest.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Parts {
+    Vocals,
+    Beat,
+    VocalsBeat,
+    #[default]
+    All,
+}
+
+impl Parts {
+    pub const ALL: [Parts; 4] = [Parts::Vocals, Parts::Beat, Parts::VocalsBeat, Parts::All];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Parts::Vocals => "Vocals only",
+            Parts::Beat => "Beat only",
+            Parts::VocalsBeat => "Vocals and beat",
+            Parts::All => "All four",
+        }
+    }
+
+    /// The stems a model has to give, by the models' names for them.
+    pub fn wants(self) -> &'static [&'static str] {
+        match self {
+            Parts::Vocals => &["vocals"],
+            Parts::Beat => &["drums"],
+            Parts::VocalsBeat => &["vocals", "drums"],
+            Parts::All => &["vocals", "drums", "bass"],
+        }
+    }
+
+    /// The model for it, of those added that give what's wanted: the quickest for a part or two,
+    /// the finest for all four.
+    // shortcut: a model's file size stands in for its speed (HTDemucs 165 MB parts at 0.45x real
+    // time, BS-RoFormer 353 MB at ~3x); time a short excerpt per model if that stops holding.
+    pub fn model(self) -> Option<Model> {
+        let (found, _) = separate::models(&separate::folder());
+        let size = |m: &Model| std::fs::metadata(m.file()).map_or(0, |f| f.len());
+        let fits = found.into_iter().filter(|m| {
+            self.wants()
+                .iter()
+                .all(|w| m.about.stems.iter().any(|x| x.eq_ignore_ascii_case(w)))
+        });
+        match self {
+            Parts::All => fits.max_by_key(size),
+            _ => fits.min_by_key(size),
+        }
+    }
 }
 
 /// Where a track's stems are kept.
@@ -86,16 +125,18 @@ impl Job {
 
 impl Live {
     /// Parting `id` started (if nothing else is being parted).
-    pub fn separate(&mut self, id: u64, cx: &mut Context<Self>) {
+    pub fn separate(&mut self, id: u64, parts: Parts, cx: &mut Context<Self>) {
         if self.separating.is_some() {
             return;
         }
         let Some(track) = self.lib.get(id) else {
             return;
         };
-        let Some(model) = best_model() else {
-            self.stem_note =
-                Some("Add a separation model in Pina Studio: Settings › Stem models".into());
+        let Some(model) = parts.model() else {
+            self.stem_note = Some(format!(
+                "No model gives {}: add one in Pina Studio's Settings › Stem models",
+                parts.name().to_lowercase()
+            ));
             cx.notify();
             return;
         };
@@ -115,6 +156,14 @@ impl Live {
                     &stop,
                 )
                 .map(|_| ());
+                // Only what was asked for is kept; the rest plays as the remainder.
+                if r.is_ok() {
+                    for name in ["vocals", "drums", "bass"] {
+                        if !parts.wants().contains(&name) {
+                            let _ = std::fs::remove_file(out.join(format!("{name}.wav")));
+                        }
+                    }
+                }
                 if r.is_err() {
                     let _ = std::fs::remove_dir_all(&out);
                 }
@@ -167,6 +216,8 @@ impl Live {
             this.update(cx, |live, cx| {
                 match stems {
                     Ok(s) if live.decks[d].track == Some(id) => {
+                        live.decks[d].stem_has = s.has;
+                        live.decks[d].more_parts = false;
                         live.deck(
                             d,
                             DeckCmd::Stems {
@@ -188,71 +239,8 @@ impl Live {
     /// The Stems pads: with stems, each part on or off, and the usual few at a touch; without,
     /// parting the track (and how far it's got).
     pub fn stem_pads(&self, i: usize, s: &DeckStatus, h: f32, cx: &mut Context<Self>) -> Div {
-        if s.stems {
-            let g = s.stem_gain;
-            let mut top = div().flex().gap(px(6.));
-            for k in 0..STEMS {
-                let on = g[k] > 0.5;
-                top = top.child(
-                    pad(
-                        if self.narrow {
-                            &NAMES[k][..1]
-                        } else {
-                            NAMES[k]
-                        },
-                        Some(STEM_COLORS[k]),
-                        on,
-                        h,
-                    )
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |live, _, _, cx| {
-                            let now = live.status().decks[i].stem_gain[k];
-                            live.deck(
-                                i,
-                                DeckCmd::StemGain {
-                                    stem: k,
-                                    gain: if now > 0.5 { 0.0 } else { 1.0 },
-                                },
-                            );
-                            cx.notify();
-                        }),
-                    ),
-                );
-            }
-            let preset = |label: &'static str, gains: [f32; STEMS], cx: &mut Context<Self>| {
-                let lit = g == gains;
-                pad(label, None, lit, h).font_family(SANS).on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |live, _, _, cx| {
-                        for (stem, gain) in gains.into_iter().enumerate() {
-                            live.deck(i, DeckCmd::StemGain { stem, gain });
-                        }
-                        cx.notify();
-                    }),
-                )
-            };
-            let four = self.narrow;
-            let bottom = div()
-                .flex()
-                .gap(px(6.))
-                .child(preset(
-                    if four { "Vox" } else { "Acapella" },
-                    [1.0, 0.0, 0.0, 0.0],
-                    cx,
-                ))
-                .child(preset(
-                    if four { "Inst" } else { "Instrumental" },
-                    [0.0, 1.0, 1.0, 1.0],
-                    cx,
-                ))
-                .child(preset(
-                    if four { "Beat" } else { "Drums only" },
-                    [0.0, 1.0, 0.0, 0.0],
-                    cx,
-                ))
-                .child(preset("All", [1.0; STEMS], cx));
-            return div().flex().flex_col().gap(px(6.)).child(top).child(bottom);
+        if s.stems && !self.decks[i].more_parts {
+            return self.part_pads(i, s, h, cx);
         }
         let id = self.decks[i].track;
         let mine = self.separating.as_ref().filter(|j| Some(j.id) == id);
@@ -363,39 +351,225 @@ impl Live {
                     .child(end),
             );
         }
-        let model = best_model();
+        let parts = self.decks[i].parts;
+        let model = parts.model();
         let say = match (&self.stem_note, &model) {
             (Some(n), _) => (n.clone(), RECORD),
-            (None, Some(_)) => ("Vocals, drums, bass and melody, apart".to_string(), TEXT_2),
-            (None, None) => ("No separation model yet".to_string(), TEXT_2),
+            (None, Some(m)) => (format!("{} · {}", parts.name(), m.about.name), TEXT_2),
+            (None, None) => ("No model gives that yet".to_string(), TEXT_2),
         };
+        let back = s.stems;
+        // A narrow card's picker over its button, when the box is tall enough: side by side
+        // it'd be cut to "All f…".
+        let stack = self.narrow && bh >= 16.0 + 6.0 + 54.0 + 12.0;
         outer.child(
             box_.when(roomy, |d| d.child(line(say.0, say.1)))
-                .child(match (&model, id) {
-                    (Some(m), Some(id)) => button(
-                        match (busy_other, self.narrow) {
-                            (true, _) => "Waiting for another track…".to_string(),
-                            (false, true) => "Separate".to_string(),
-                            (false, false) => format!("Separate · {}", m.about.name),
-                        },
-                        !busy_other,
-                    )
-                    .h(px(24.))
-                    .max_w_full()
-                    .overflow_hidden()
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |live, _, _, cx| live.separate(id, cx)),
-                    )
-                    .into_any_element(),
-                    (None, _) => line(
-                        "Add one in Pina Studio › Settings › Stem models".into(),
-                        TEXT_3,
-                    )
-                    .into_any_element(),
-                    _ => line("Load a track first".into(), TEXT_4).into_any_element(),
-                })
+                .child(
+                    div()
+                        .h(px(if stack { 54. } else { 24. }))
+                        .flex()
+                        .when(stack, |d| d.flex_col())
+                        .when(!stack, |d| d.items_center())
+                        .gap(px(6.))
+                        .child(
+                            self.parts_dropdown(i, parts, cx)
+                                .when(!stack, |d| d.flex_1()),
+                        )
+                        .child(match id {
+                            Some(id) if model.is_some() => button(
+                                if busy_other { "Waiting…" } else { "Separate" },
+                                !busy_other,
+                            )
+                            .h(px(24.))
+                            .flex_none()
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |live, _, _, cx| live.separate(id, parts, cx)),
+                            )
+                            .into_any_element(),
+                            None => div()
+                                .flex_none()
+                                .text_color(rgb(TEXT_4))
+                                .child("Load a track")
+                                .into_any_element(),
+                            _ => div().into_any_element(),
+                        })
+                        // Asked for more parts of a parted track: back to the parts it has.
+                        .when(back, |d| {
+                            d.child(button("Back", false).h(px(24.)).flex_none().on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |live, _, _, cx| {
+                                    live.decks[i].more_parts = false;
+                                    cx.notify();
+                                }),
+                            ))
+                        }),
+                )
                 .child(end),
         )
+    }
+
+    /// A pick of what to part the track into, each with the model that'll do it.
+    fn parts_dropdown(&self, i: usize, parts: Parts, cx: &mut Context<Self>) -> Div {
+        let open = self.parts_menu == Some(i);
+        let menu = div()
+            .w(px(250.))
+            .p(px(4.))
+            .rounded(px(8.))
+            .bg(rgb(CARD))
+            .border_1()
+            .border_color(rgb(LINE_STRONG))
+            .shadow_lg()
+            .on_mouse_down_out(cx.listener(|live, _, _, cx| {
+                live.parts_menu = None;
+                cx.notify();
+            }))
+            .children(Parts::ALL.into_iter().map(|p| {
+                let model = p.model().map(|m| m.about.name);
+                div()
+                    .h(px(28.))
+                    .px(px(9.))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(8.))
+                    .rounded(px(5.))
+                    .cursor_pointer()
+                    .bg(rgb(if p == parts { RAISED } else { CARD }))
+                    .text_color(rgb(if model.is_some() { TEXT } else { TEXT_4 }))
+                    .hover(|st| st.bg(rgb(RAISED)))
+                    .child(p.name())
+                    .child(
+                        div()
+                            .text_size(px(10.))
+                            .text_color(rgb(TEXT_4))
+                            .child(model.unwrap_or_else(|| "no model".into())),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |live, _, _, cx| {
+                            cx.stop_propagation();
+                            live.decks[i].parts = p;
+                            live.parts_menu = None;
+                            live.stem_note = None;
+                            cx.notify();
+                        }),
+                    )
+            }));
+        div()
+            .min_w(px(0.))
+            .flex()
+            .flex_col()
+            .child(dropdown(parts.name(), 24.0).min_w(px(0.)).on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |live, _, _, cx| {
+                    live.parts_menu = if live.parts_menu == Some(i) {
+                        None
+                    } else {
+                        Some(i)
+                    };
+                    cx.notify();
+                }),
+            ))
+            .when(open, |d| {
+                d.child(
+                    gpui::deferred(gpui::anchored().snap_to_window().child(menu)).with_priority(1),
+                )
+            })
+    }
+
+    /// The parts the track has (as it was parted), each on or off, and the usual few at a touch:
+    /// a part alone, the track without it, all of it; and, parted only partly, parting more.
+    fn part_pads(&self, i: usize, s: &DeckStatus, h: f32, cx: &mut Context<Self>) -> Div {
+        let has = self.decks[i].stem_has;
+        let g = s.stem_gain;
+        let narrow = self.narrow;
+        // What's apart, and the rest (named by what it is).
+        let rest = match has {
+            [true, true, true] => NAMES[3],
+            // (Not "Instrumental": that's the preset beside it, vocals off.)
+            [true, false, false] => "Music",
+            _ => "Rest",
+        };
+        let mut shown: Vec<(usize, &'static str)> = (0..3)
+            .filter(|&k| has[k])
+            .map(|k| (k, if k == 1 && !has[2] { "Beat" } else { NAMES[k] }))
+            .collect();
+        shown.push((3, rest));
+        let mut top = div().flex().gap(px(6.));
+        for (k, label) in shown {
+            let on = g[k] > 0.5;
+            let label = if narrow && label.len() > 6 {
+                &label[..1]
+            } else {
+                label
+            };
+            top = top.child(
+                pad(label, Some(STEM_COLORS[k]), on, h)
+                    .font_family(SANS)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |live, _, _, cx| {
+                            let now = live.status().decks[i].stem_gain[k];
+                            let gain = if now > 0.5 { 0.0 } else { 1.0 };
+                            live.deck(i, DeckCmd::StemGain { stem: k, gain });
+                            cx.notify();
+                        }),
+                    ),
+            );
+        }
+        let preset = |label: &'static str, gains: [f32; STEMS], cx: &mut Context<Self>| {
+            // Lit when what's apart is as it says (what isn't apart can't differ).
+            let lit = (0..STEMS).all(|k| (k < 3 && !has[k]) || g[k] == gains[k]);
+            pad(label, None, lit, h).font_family(SANS).on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |live, _, _, cx| {
+                    for (stem, gain) in gains.into_iter().enumerate() {
+                        live.deck(i, DeckCmd::StemGain { stem, gain });
+                    }
+                    cx.notify();
+                }),
+            )
+        };
+        let mut bottom = div().flex().gap(px(6.));
+        if has[0] {
+            bottom = bottom
+                .child(preset(
+                    if narrow { "Vox" } else { "Acapella" },
+                    [1.0, 0.0, 0.0, 0.0],
+                    cx,
+                ))
+                .child(preset(
+                    if narrow { "Inst" } else { "Instrumental" },
+                    [0.0, 1.0, 1.0, 1.0],
+                    cx,
+                ));
+        }
+        if has[1] {
+            bottom = bottom.child(preset(
+                if narrow { "Beat" } else { "Beat only" },
+                [0.0, 1.0, 0.0, 0.0],
+                cx,
+            ));
+            if !has[0] {
+                bottom = bottom.child(preset("No beat", [1.0, 0.0, 1.0, 1.0], cx));
+            }
+        }
+        bottom = bottom.child(preset("All", [1.0; STEMS], cx));
+        if has != [true; 3] {
+            bottom = bottom.child(
+                pad(if narrow { "More" } else { "More parts" }, None, false, h)
+                    .font_family(SANS)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |live, _, _, cx| {
+                            live.decks[i].more_parts = true;
+                            live.decks[i].parts = Parts::All;
+                            cx.notify();
+                        }),
+                    ),
+            );
+        }
+        div().flex().flex_col().gap(px(6.)).child(top).child(bottom)
     }
 }

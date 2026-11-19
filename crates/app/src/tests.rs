@@ -8,7 +8,7 @@ use std::{path::PathBuf, sync::Arc, thread, time::Duration};
 use gpui::{AppContext, px};
 use pina_live_engine::{deck::DeckCmd, engine::engine, library::Library, mixer::MixCmd};
 
-use crate::live::Live;
+use crate::{controls::Ctl, live::Live};
 
 /// A WAV of a tone, 16-bit stereo, for the tests' own library.
 fn write_wav(path: &std::path::Path, seconds: f32) {
@@ -50,7 +50,16 @@ fn test_home() -> PathBuf {
             r#"{"name": "BS-RoFormer SW", "stems": ["bass", "drums", "other", "vocals"], "input": "wave"}"#,
         )
         .unwrap();
-        std::fs::write(model.join("model.onnx"), b"").unwrap();
+        std::fs::write(model.join("model.onnx"), b"bigger").unwrap();
+        // A second, smaller (quicker) model giving the same stems.
+        let quick = d.join("models").join("htdemucs");
+        std::fs::create_dir_all(&quick).unwrap();
+        std::fs::write(
+            quick.join("model.json"),
+            r#"{"name": "HTDemucs", "stems": ["drums", "bass", "other", "vocals"], "input": "wave"}"#,
+        )
+        .unwrap();
+        std::fs::write(quick.join("model.onnx"), b"q").unwrap();
         // SAFETY: set once, before any test thread reads them.
         unsafe {
             std::env::set_var("PINA_LIVE_HOME", &d);
@@ -96,6 +105,13 @@ fn dragging_a_track_onto_a_deck_loads_it(cx: &mut gpui::TestAppContext) {
         );
         (row, live.decks[1].overview_at.get().center())
     });
+    // B's channel as the last track left it: EQ'd, filtered, on FX 1.
+    live.update(cx, |live, _| {
+        Ctl::Eq(1, 0).set(live, 0.1);
+        Ctl::Filter(1).set(live, 0.8);
+        live.fx[0].settings.on = true;
+        live.fx[0].on[1] = true;
+    });
     cx.simulate_mouse_down(row, gpui::MouseButton::Left, gpui::Modifiers::none());
     cx.simulate_mouse_move(
         row + gpui::point(px(30.), px(-20.)),
@@ -112,7 +128,24 @@ fn dragging_a_track_onto_a_deck_loads_it(cx: &mut gpui::TestAppContext) {
         assert_eq!(live.decks[1].track, Some(first));
         assert_eq!(live.decks[0].track, None);
         assert!(live.drop_on.is_none());
+        // The new track's channel starts clean.
+        for c in [Ctl::Eq(1, 0), Ctl::Filter(1)] {
+            assert_eq!(c.get(live), c.range().2, "{c:?} back home");
+        }
+        assert!(!live.fx[0].on[1], "off FX 1");
     });
+}
+
+/// A part or two go to the quickest model that gives them; all four to the finest.
+#[test]
+fn stem_options_pick_their_model() {
+    use crate::stems::Parts;
+    test_home();
+    let name = |p: Parts| p.model().map(|m| m.about.name.to_string());
+    assert_eq!(name(Parts::Vocals).as_deref(), Some("HTDemucs"));
+    assert_eq!(name(Parts::Beat).as_deref(), Some("HTDemucs"));
+    assert_eq!(name(Parts::VocalsBeat).as_deref(), Some("HTDemucs"));
+    assert_eq!(name(Parts::All).as_deref(), Some("BS-RoFormer SW"));
 }
 
 /// `PINA_LIVE_SHOT=<dir> PINA_LIVE_SHOT_TRACKS="<file>|<file>" cargo test -p pina-live shots --
@@ -252,7 +285,7 @@ fn shots() {
                 };
                 live.deck(1, DeckCmd::StemGain { stem: 0, gain: 0.0 });
                 live.decks[0].pads = match page.as_str() {
-                    "parting" => crate::live::Pads::Stems,
+                    "parting" | "vocals" => crate::live::Pads::Stems,
                     _ => crate::live::Pads::HotCue,
                 };
                 // FX 1: an echo on A; FX 2: a flanger on B.
@@ -275,6 +308,8 @@ fn shots() {
                 live.show_settings = page == "settings";
                 match page.as_str() {
                     "closed" => live.settings.layout.library = crate::layout::LibView::Closed,
+                    // B's track parted into vocals only; A's "part it into" menu open.
+                    "vocals" => live.parts_menu = Some(0),
                     "full" => live.settings.layout.library = crate::layout::LibView::Full,
                     "stemsbox" => live
                         .decks
@@ -477,7 +512,23 @@ fn layouts_fit() {
                 "stems, none parting",
                 Box::new(|l: &mut Live| {
                     l.decks.iter_mut().for_each(|d| d.pads = Pads::Stems);
+                    l.decks[1].stem_has = [true; 3];
                     l.separating = None;
+                }),
+            ),
+            (
+                "stems, B vocals only, A's parts menu open",
+                Box::new(|l: &mut Live| {
+                    l.decks[1].stem_has = [true, false, false];
+                    l.parts_menu = Some(0);
+                    l.decks[0].parts = crate::stems::Parts::VocalsBeat;
+                }),
+            ),
+            (
+                "stems, B parting more",
+                Box::new(|l: &mut Live| {
+                    l.parts_menu = None;
+                    l.decks[1].more_parts = true;
                 }),
             ),
             (
@@ -536,6 +587,36 @@ fn layouts_fit() {
                     failures.push(format!(
                         "{at}: {name} goes past the window ({r:.0}, {bt:.0})"
                     ));
+                }
+            }
+            // A card's columns all end on one line at the body's foot: keylock and slip, the
+            // loop, the pitch range; nothing short of it, no space left under them.
+            for d in 0..4 {
+                let foot = |n: &str| {
+                    let key = match n {
+                        "" => format!("deck{d}.body"),
+                        n => format!("deck{d}.body.{n}"),
+                    };
+                    probes
+                        .get(&key)
+                        .map(|b| f32::from(b.origin.y + b.size.height))
+                };
+                let Some(body) = foot("") else { continue };
+                let body = body - crate::decks::BODY_PB;
+                // Compact cards have no ring: keylock and slip are in the transport then.
+                let ring = foot("ring").is_some();
+                for n in ["loop", "ringrow", "range"] {
+                    if n == "ringrow" && !ring {
+                        continue;
+                    }
+                    match foot(n) {
+                        Some(y) if (y - body).abs() <= 1.0 => {}
+                        Some(y) => failures.push(format!(
+                            "{at}: deck {d}'s {n} ends {:.0}px off the body's foot",
+                            y - body
+                        )),
+                        None => failures.push(format!("{at}: deck {d} has no {n}")),
+                    }
                 }
             }
             // What should be there, is.

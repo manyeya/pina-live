@@ -76,11 +76,12 @@ pub struct Sizes {
     pub card: f32,
 }
 
-/// How short and tall the decks can be: short enough to leave room, tall enough for every pad.
+/// How short and tall the decks can be: never shorter than their controls need; as tall as
+/// the window gives them (their pads, ring and faders grow into it).
 pub fn panel_range(compact: bool) -> (f32, f32) {
     match compact {
-        true => (330.0, 560.0),
-        false => (412.0, 640.0),
+        true => (330.0, 1200.0),
+        false => (412.0, 1200.0),
     }
 }
 
@@ -116,8 +117,12 @@ pub fn fit(l: &Layout, w: f32, h: f32, rows: usize, four: bool, learning: bool) 
                 panel = (room - wave * n).max(pmin);
             }
         }
-        // Shut, what it had goes to the waveforms.
-        LibView::Closed => wave = ((h - fixed - panel) / n).clamp(wmin, wmax.max(wave)),
+        // Shut: the waveforms as they're set (as long as the decks keep their least), and the
+        // decks fill the rest to the bottom: nothing left empty.
+        LibView::Closed => {
+            wave = wave.min(((h - fixed - pmin) / n).max(wmin));
+            panel = (h - fixed - wave * n).max(pmin);
+        }
         LibView::Full => {}
     }
     Sizes {
@@ -210,7 +215,9 @@ impl Live {
         &mut self.settings.layout
     }
 
-    /// An edge dragged `by` pixels from where it was (`value` then).
+    /// An edge dragged `by` pixels from where it was (`value` then). What's kept is what's
+    /// drawn: the sizes are fitted to the window straight away and stored as fitted, so an edge
+    /// dragged past where it can go doesn't run on unseen and jump later.
     pub fn resize(&mut self, edge: Edge, value: f32, by: f32) {
         let shown = self.shown();
         let rows = shown.max(1) as f32;
@@ -229,6 +236,15 @@ impl Live {
                 let (lo, hi) = side_range();
                 l.side = (value + by).clamp(lo, hi);
             }
+        }
+        let (w, h) = self.view;
+        let s = fit(&self.settings.layout, w, h, shown, self.four, self.learning);
+        let l = &mut self.settings.layout;
+        match (edge, l.library) {
+            // Shut, the decks only follow the waveforms: their height isn't kept.
+            (_, LibView::Closed) => l.waves = s.wave,
+            (Edge::Side, _) => {}
+            _ => (l.waves, l.panel) = (s.wave, s.panel),
         }
     }
 
@@ -254,13 +270,26 @@ mod tests {
         assert!(s.compact && !s.layered);
         let (pmin, _) = panel_range(true);
         assert!(s.panel >= pmin && s.wave >= 36.0);
-        // Library shut: the waveforms take its room.
+        // Library shut: the waveforms as set, the decks down to the window's foot.
         let shut = Layout {
             library: LibView::Closed,
             ..l
         };
         let s = fit(&shut, 1440.0, 900.0, 2, false, false);
-        assert!(s.wave > 150.0, "{}", s.wave);
+        let fixed = TOP_H + FX_BAR_H + 2.0 * GAP + 2.0;
+        assert_eq!(s.wave, 76.0);
+        assert!(
+            (s.wave * 2.0 + s.panel - (900.0 - fixed)).abs() < 0.5,
+            "{}",
+            s.panel
+        );
+        // Waveforms dragged too tall: the decks keep their least.
+        let tall = Layout {
+            waves: 260.0,
+            ..shut
+        };
+        let s = fit(&tall, 1440.0, 700.0, 2, false, false);
+        assert!(s.panel >= panel_range(false).0 && s.wave < 260.0, "{s:?}");
         // Four decks in a narrow window go two a side.
         assert!(fit(&l, 1300.0, 900.0, 4, true, false).layered);
         assert!(!fit(&l, 1600.0, 900.0, 4, true, false).layered);

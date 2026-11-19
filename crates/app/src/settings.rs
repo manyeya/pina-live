@@ -25,6 +25,9 @@ pub struct Settings {
     pub keylock: bool,
     /// A playing deck won't take another track.
     pub load_lock: bool,
+    /// A track loaded, its channel starts clean: trim, EQ and filter back home, off the
+    /// effects that are on.
+    pub reset_on_load: bool,
     /// The panels' sizes and the library's view.
     pub layout: crate::layout::Layout,
 }
@@ -37,6 +40,7 @@ impl Default for Settings {
             auto_gain: true,
             keylock: true,
             load_lock: true,
+            reset_on_load: true,
             layout: crate::layout::Layout::default(),
         }
     }
@@ -315,6 +319,7 @@ impl Live {
                     .child(section("DECKS"))
                     .child(line("Keylock on as tracks load", toggle(s.keylock, |s| s.keylock = !s.keylock, cx)))
                     .child(line("Don't load onto a playing deck", toggle(s.load_lock, |s| s.load_lock = !s.load_lock, cx)))
+                    .child(line("A new track's channel starts clean (EQ, filter, effects)", toggle(s.reset_on_load, |s| s.reset_on_load = !s.reset_on_load, cx)))
                     .child(section("CONTROLLERS"))
                     .child(self.midi_settings(cx))
                     .child(section("LIBRARY FOLDERS"))

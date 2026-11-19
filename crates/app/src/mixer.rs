@@ -88,12 +88,14 @@ impl Live {
             false => 16.0 + 20.0 + 5.0 * 30.0 + 20.0 + 24.0 + 2.0 + 14.0 + 9.0 * 5.0,
         };
         let master = match compact {
-            true => 20.0 + 12.0 + 32.0 + 12.0 + 40.0 + 4.0 * 6.0,
-            false => 20.0 + 12.0 + 40.0 + 12.0 + 40.0 + 4.0 * 10.0,
+            // Its name, knob, label and the cue mix and phones knobs, as drawn (measured).
+            true => 20.0 + 12.0 + 32.0 + 12.0 + 40.0 + 4.0 * 6.0 + 6.0,
+            false => 20.0 + 12.0 + 40.0 + 12.0 + 40.0 + 4.0 * 10.0 + 10.0,
         };
         (
             (room - strip).max(36.0),
-            (room - master).clamp(48.0, if compact { 110.0 } else { 160.0 }),
+            // The master's meter fills its card: no gap under it.
+            (room - master).max(48.0),
         )
     }
 

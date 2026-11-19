@@ -34,7 +34,12 @@ fn main() {
             .unwrap();
     }
     w.finalize().unwrap();
-    let model = pina_engine::separate::find(&pina_engine::separate::folder(), None).unwrap();
+    // A model by (the start of) its name as a fourth argument; else the first there is.
+    let model = pina_engine::separate::find(
+        &pina_engine::separate::folder(),
+        a.get(3).map(String::as_str),
+    )
+    .unwrap();
     let t = Instant::now();
     let stems_dir = out.join("stems");
     pina_engine::separate::separate(&cut, &model, &stems_dir, |_| {}, &AtomicBool::new(false))

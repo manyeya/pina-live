@@ -106,6 +106,11 @@ pub struct DeckUi {
     pub loading: Option<Instant>,
     pub error: Option<String>,
     pub pads: Pads,
+    /// What the track's to be parted into, the parts it was (vocals, drums, bass), and parting
+    /// more of a partly parted track.
+    pub parts: crate::stems::Parts,
+    pub stem_has: [bool; 3],
+    pub more_parts: bool,
     /// The pitch fader's reach either way, as a fraction (0.08 is ±8%).
     pub range: f64,
     /// The pitch fader, as a fraction off the track's own speed.
@@ -133,6 +138,9 @@ impl DeckUi {
             loading: None,
             error: None,
             pads: Pads::HotCue,
+            parts: crate::stems::Parts::All,
+            stem_has: [false; 3],
+            more_parts: false,
             range: 0.08,
             fader: 0.0,
             keylock: true,
@@ -217,6 +225,8 @@ pub struct Live {
     pub layer: [usize; 2],
     /// A deck card's width this frame: what fits on its pads and its rows.
     pub card_w: f32,
+    /// The window's size, last drawn.
+    pub view: (f32, f32),
     /// Where the panels were laid out, for the integration tests.
     pub probes: crate::probe::Probes,
     pub mix: MixUi,
@@ -224,6 +234,8 @@ pub struct Live {
     /// The FX unit whose effect menu is open, and the deck whose pad-mode menu is (four decks).
     pub fx_menu: Option<usize>,
     pub pad_menu: Option<usize>,
+    /// The deck whose "part it into" menu is open.
+    pub parts_menu: Option<usize>,
     pub quantize: bool,
     /// Seconds across the waveforms.
     pub zoom: f32,
@@ -473,11 +485,13 @@ impl Live {
             layered: false,
             layer: [0, 1],
             card_w: 520.0,
+            view: (1440.0, 900.0),
             probes: Default::default(),
             mix: MixUi::default(),
             fx: Default::default(),
             fx_menu: None,
             pad_menu: None,
+            parts_menu: None,
             quantize: true,
             zoom: 10.0,
             lib,
@@ -712,7 +726,9 @@ impl Live {
         }
         let rate = self.rate;
         let track = self.lib.get(id);
-        let cue = track.map_or(0.0, |t| t.cue * rate);
+        // A track loads at its first sound (the cue set last time isn't kept: hot cues are for
+        // that), so an old track doesn't start where it was left.
+        let cue = audio.first_sound();
         let hot =
             std::array::from_fn(|k| track.and_then(|t| t.hot[k].as_ref()).map(|h| h.at * rate));
         let grid = self.decks[deck].analysis.as_ref().and_then(|a| a.grid);
@@ -727,6 +743,10 @@ impl Live {
             },
         );
         self.send_gain(deck);
+        self.decks[deck].more_parts = false;
+        if self.settings.reset_on_load {
+            self.reset_channel(deck);
+        }
         if crate::stems::has_stems(id) {
             self.load_stems(deck, id, cx);
         }
@@ -804,10 +824,6 @@ impl Live {
                 continue;
             };
             let mut changed = false;
-            if (t.cue * rate - s.cue).abs() > 1.0 {
-                t.cue = s.cue / rate;
-                changed = true;
-            }
             for k in 0..HOT_CUES {
                 let now = (!s.hot[k].is_nan()).then(|| s.hot[k] / rate);
                 let was = t.hot[k].as_ref().map(|h| h.at);
@@ -995,6 +1011,30 @@ impl Live {
         self.browser.refresh(&self.lib);
     }
 
+    /// A channel back to how it starts, for a new track: trim, EQ and filter home, and off any
+    /// effect that's on (its send kept where the effect's off, ready).
+    pub fn reset_channel(&mut self, ch: usize) {
+        for c in [
+            Ctl::Trim(ch),
+            Ctl::Eq(ch, 0),
+            Ctl::Eq(ch, 1),
+            Ctl::Eq(ch, 2),
+            Ctl::Filter(ch),
+        ] {
+            c.set(self, c.range().2);
+        }
+        for u in 0..pina_live_engine::fx::UNITS {
+            if self.fx[u].settings.on && self.fx[u].on[ch] {
+                self.fx[u].on[ch] = false;
+                self.remote.fx(pina_live_engine::fx::FxCmd::Assign {
+                    unit: u,
+                    ch,
+                    on: false,
+                });
+            }
+        }
+    }
+
     /// A drag over deck `i`'s card: inside it, the card says it'll load there.
     pub fn drag_over(&mut self, i: usize, inside: bool, what: String, cx: &mut Context<Self>) {
         let was = self.drop_on.clone();
@@ -1131,6 +1171,7 @@ impl Render for Live {
         self.narrow = sizes.compact;
         self.layered = sizes.layered;
         self.card_w = sizes.card;
+        self.view = (w, h);
         self.wave_h = sizes.wave;
         self.panel_h = sizes.panel;
         let library = self.settings.layout.library;
@@ -1222,7 +1263,9 @@ impl Render for Live {
                                     .map(|&i| self.deck_panel(i, cx).into_any_element()),
                             ),
                     )
-                    .child(self.grip(crate::layout::Edge::Panel, cx))
+                    .when(library == crate::layout::LibView::Open, |d| {
+                        d.child(self.grip(crate::layout::Edge::Panel, cx))
+                    })
                     .child(self.fx_bar(cx))
                     .when(library == crate::layout::LibView::Open, |d| {
                         d.child(self.browser_panel(window, cx))

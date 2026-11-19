@@ -593,3 +593,12 @@ fn preview_in_the_headphones_only() {
     r.poll();
     assert!(r.last.preview.is_nan());
 }
+
+/// A track's first sound: past the silence it starts with, none for a silent one.
+#[test]
+fn first_sound_skips_leading_silence() {
+    let mut x = vec![0.0f32; 1000];
+    x.extend(std::iter::repeat_n(0.5f32, 10));
+    assert_eq!(Audio::new(x.clone(), x).first_sound(), 1000.0);
+    assert_eq!(Audio::new(vec![0.0; 50], vec![0.0; 50]).first_sound(), 0.0);
+}

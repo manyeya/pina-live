@@ -32,6 +32,15 @@ impl Audio {
         Ok(Audio::new(l, r))
     }
 
+    /// Where the sound starts: the first frame above -40 dB (0 if it's silent throughout).
+    pub fn first_sound(&self) -> f64 {
+        self.l
+            .iter()
+            .zip(&self.r)
+            .position(|(a, b)| a.abs().max(b.abs()) > 0.01)
+            .unwrap_or(0) as f64
+    }
+
     pub fn len(&self) -> usize {
         self.l.len()
     }

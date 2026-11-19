@@ -36,35 +36,51 @@ pub fn transport_h(compact: bool) -> f32 {
     if compact { 52.0 } else { 58.0 }
 }
 const BODY_PT: f32 = 10.0;
-const BODY_PB: f32 = 8.0;
+pub const BODY_PB: f32 = 8.0;
 
-/// What a card's height leaves its body's parts: the body, a pad's height, the pitch fader's,
-/// and the beat ring's size. Every part has a fixed height but these, so they're worked out
-/// exactly and nothing spills.
+/// What a card's height and width leave its parts: the overview, the body, a pad's height, the
+/// pitch fader's, and the beat ring's size. Everything else has a fixed height, so these are
+/// worked out exactly: every column ends at the body's bottom (the loop, keylock and slip, the
+/// fader's reach in one line), nothing spills, and nothing's left empty. Pads grow to a
+/// comfortable height; what the card has past that goes to the overview, the track drawn
+/// bigger. The ring's as big as the card's width allows.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Budget {
+    pub over: f32,
     pub body: f32,
     pub pad: f32,
     pub fader: f32,
     pub ring: f32,
 }
 
-pub fn budget(panel: f32, compact: bool, four: bool) -> Budget {
-    let body = panel - 2.0 - HEADER_H - over_h(compact) - transport_h(compact);
-    let inner = body - BODY_PT - BODY_PB;
+/// The tallest a pad grows.
+const PAD_MAX: f32 = 64.0;
+/// The loop's row (and keylock and slip's, in line with it).
+pub const ROW_H: f32 = 34.0;
+
+pub fn budget(panel: f32, compact: bool, four: bool, card_w: f32) -> Budget {
     // The pads' column: the captions, the mode's tabs (or, four decks, its dropdown), the loop.
     let column = match (compact, four) {
-        (false, _) => 12.0 + 6.0 + 32.0 + 6.0 + 6.0 + 6.0 + 14.0 + 6.0 + 34.0,
-        (true, false) => 32.0 + 6.0 + 6.0 + 6.0 + 34.0,
-        (true, true) => 26.0 + 6.0 + 6.0 + 6.0 + 34.0,
+        (false, _) => 12.0 + 6.0 + 32.0 + 6.0 + 6.0 + 6.0 + 14.0 + 6.0 + ROW_H,
+        (true, false) => 32.0 + 6.0 + 6.0 + 6.0 + ROW_H,
+        (true, true) => 26.0 + 6.0 + 6.0 + 6.0 + ROW_H,
     };
+    let fixed = 2.0 + HEADER_H + transport_h(compact) + BODY_PT + BODY_PB;
+    let inner = panel - fixed - over_h(compact);
+    let pad = ((inner - column) / 2.0).max(22.0);
+    // Pads past their tallest: the rest to the overview.
+    let spare = (2.0 * (pad - PAD_MAX)).max(0.0);
+    let (pad, inner) = (pad.min(PAD_MAX), inner - spare);
     // The tempo's column: its caption, its readout, its reach, and (compact) the key.
     let tempo = 12.0 + 14.0 + 20.0 + 3.0 * 5.0 + if compact { 18.0 + 5.0 } else { 0.0 };
     Budget {
-        body,
-        pad: ((inner - column) / 2.0).clamp(22.0, 52.0),
+        over: over_h(compact) + spare,
+        body: inner + BODY_PT + BODY_PB,
+        pad,
         fader: (inner - tempo).max(36.0),
-        ring: (inner - 36.0).min(150.0),
+        ring: (inner - ROW_H - 10.0)
+            .min((card_w * 0.3).clamp(110.0, 230.0))
+            .max(60.0),
     }
 }
 
@@ -110,7 +126,7 @@ impl Live {
     pub fn deck_panel(&self, i: usize, cx: &mut Context<Self>) -> impl IntoElement {
         let compact = self.narrow;
         let h = self.panel_h;
-        let b = budget(h, compact, self.four);
+        let b = budget(h, compact, self.four, self.card_w);
         let s = self.status().decks[i];
         let dropping = self
             .drop_on
@@ -162,8 +178,8 @@ impl Live {
             .child(probe(&self.probes, format!("deck{i}")))
             .child(self.deck_header(i, &s, cx))
             .child(match self.grid_edit == Some(i) {
-                true => self.grid_tray(i, cx),
-                false => self.overview_strip(i, &s, cx),
+                true => self.grid_tray(i, b.over, cx),
+                false => self.overview_strip(i, &s, b.over, cx),
             })
             .child(
                 div()
@@ -176,7 +192,6 @@ impl Live {
                     .px(px(if compact { 10. } else { 14. }))
                     .pt(px(BODY_PT))
                     .pb(px(BODY_PB))
-                    .items_start()
                     .child(probe(&self.probes, format!("deck{i}.body")))
                     .when(!compact, |d| d.child(self.ring_column(i, &s, b.ring, cx)))
                     .child(
@@ -190,11 +205,21 @@ impl Live {
                             .child(probe(&self.probes, format!("deck{i}.body.mid")))
                             .when(!compact, |d| d.child(caption("PADS")))
                             .child(self.pad_tabs(i, cx))
-                            .child(self.pads(i, &s, b.pad, cx))
+                            .child(
+                                div()
+                                    .relative()
+                                    .child(probe(&self.probes, format!("deck{i}.body.pads")))
+                                    .child(self.pads(i, &s, b.pad, cx)),
+                            )
                             .when(!compact, |d| {
                                 d.child(div().pt(px(2.)).child(caption("LOOP")))
                             })
-                            .child(self.loop_row(i, &s, cx)),
+                            .child(
+                                div()
+                                    .relative()
+                                    .child(probe(&self.probes, format!("deck{i}.body.loop")))
+                                    .child(self.loop_row(i, &s, cx)),
+                            ),
                     )
                     .child(self.tempo_column(i, &s, b.fader, cx)),
             )
@@ -458,7 +483,7 @@ impl Live {
 
     /// The beat grid's tools: half or double the tempo, nudge it, move the grid, or put the
     /// downbeat where the track is. Kept with the track (and left alone by analysis after).
-    fn grid_tray(&self, i: usize, cx: &mut Context<Self>) -> Div {
+    fn grid_tray(&self, i: usize, over: f32, cx: &mut Context<Self>) -> Div {
         let g = self.decks[i].analysis.as_ref().and_then(|a| a.grid);
         let btn = |label: &'static str, f: fn(&mut Grid, f64), cx: &mut Context<Self>| {
             seg(label, false, 24.0).px(px(7.)).on_mouse_down(
@@ -471,7 +496,7 @@ impl Live {
         };
         div()
             .relative()
-            .h(px(over_h(self.narrow)))
+            .h(px(over))
             .flex_none()
             .px(px(10.))
             .flex()
@@ -522,13 +547,13 @@ impl Live {
         }
     }
 
-    fn overview_strip(&self, i: usize, s: &DeckStatus, cx: &mut Context<Self>) -> Div {
+    fn overview_strip(&self, i: usize, s: &DeckStatus, over: f32, cx: &mut Context<Self>) -> Div {
         let now = self.deck_seconds(i);
         let len = s.len / self.rate;
         let left = len - now;
         div()
             .relative()
-            .h(px(over_h(self.narrow)))
+            .h(px(over))
             .flex_none()
             .px(px(14.))
             .pt(px(10.))
@@ -539,7 +564,7 @@ impl Live {
             .child(
                 div()
                     .id(("overview", i))
-                    .h(px(if self.narrow { 28. } else { 34. }))
+                    .h(px(over - 28.0))
                     .cursor_pointer()
                     .on_mouse_down(
                         MouseButton::Left,
@@ -624,9 +649,10 @@ impl Live {
             None => "—".into(),
         };
         let d = &self.decks[i];
+        // The ring centred in what's over keylock and slip, which sit at the bottom.
         div()
             .relative()
-            .w(px(size))
+            .w(px(size.max(150.0)))
             .flex_none()
             .flex()
             .flex_col()
@@ -635,109 +661,130 @@ impl Live {
             .child(probe_at)
             .child(
                 div()
-                    .size(px(size))
-                    .relative()
-                    .cursor(gpui::CursorStyle::OpenHand)
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |live, e: &MouseDownEvent, _, cx| {
-                            let b = live.decks[i].platter.get();
-                            let (x, y) = pt(e.position);
-                            let c = b.center();
-                            let a = (y - f32::from(c.y)).atan2(x - f32::from(c.x));
-                            if !live.act(i, DeckCmd::Touch(true)) {
-                                return;
-                            }
-                            live.drag = Some(Drag::Platter { deck: i, angle: a });
-                            cx.notify();
-                        }),
-                    )
-                    .child(
-                        canvas(
-                            move |b, _, _| bounds.set(b),
-                            move |b, _, window, _| {
-                                let c = b.center();
-                                let r = f32::from(b.size.width) / 2.0 - 6.0;
-                                let at = |a: f32, rr: f32| -> Point<Pixels> {
-                                    point(c.x + px(rr * a.cos()), c.y + px(rr * a.sin()))
-                                };
-                                if touched {
-                                    window.paint_quad(
-                                        gpui::fill(
-                                            gpui::Bounds::centered_at(
-                                                c,
-                                                gpui::size(px(r * 2.0), px(r * 2.0)),
-                                            ),
-                                            alpha(color, 0.08),
-                                        )
-                                        .corner_radii(px(r)),
-                                    );
-                                }
-                                let tau = std::f32::consts::TAU;
-                                let now16 = beat.map(|b| b.rem_euclid(16.0) as f32);
-                                for k in 0..16 {
-                                    let a0 = k as f32 / 16.0 * tau - tau / 4.0 + 0.035;
-                                    let a1 = (k + 1) as f32 / 16.0 * tau - tau / 4.0 - 0.035;
-                                    let w = if k % 4 == 0 { 7.0 } else { 5.0 };
-                                    let fill = match now16 {
-                                        Some(n) if n.floor() as usize == k => rgb(color).into(),
-                                        Some(n) if (k as f32) < n.floor() => alpha(color, 0.35),
-                                        _ => gpui::Hsla::from(rgb(RAISED)),
-                                    };
-                                    let mut p = PathBuilder::stroke(px(w));
-                                    p.move_to(at(a0, r));
-                                    p.arc_to(point(px(r), px(r)), px(0.), false, true, at(a1, r));
-                                    if let Ok(p) = p.build() {
-                                        window.paint_path(p, fill);
-                                    }
-                                }
-                                // No grid: a mark turning with the track instead.
-                                if now16.is_none() && loaded {
-                                    let a = turn * tau - tau / 4.0;
-                                    let mut p = PathBuilder::stroke(px(3.));
-                                    p.move_to(at(a, r * 0.55));
-                                    p.line_to(at(a, r - 10.0));
-                                    if let Ok(p) = p.build() {
-                                        window.paint_path(p, rgb(TEXT));
-                                    }
-                                }
-                            },
-                        )
-                        .size_full(),
-                    )
+                    .flex_1()
+                    .min_h(px(0.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
                     .child(
                         div()
-                            .absolute()
-                            .inset_0()
-                            .flex()
-                            .flex_col()
-                            .items_center()
-                            .justify_center()
-                            .gap(px(2.))
-                            .child(
-                                div()
-                                    .font_family(MONO)
-                                    .text_size(px(24.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(rgb(if loaded { TEXT } else { TEXT_4 }))
-                                    .child(center),
+                            .size(px(size))
+                            .relative()
+                            .cursor(gpui::CursorStyle::OpenHand)
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |live, e: &MouseDownEvent, _, cx| {
+                                    let b = live.decks[i].platter.get();
+                                    let (x, y) = pt(e.position);
+                                    let c = b.center();
+                                    let a = (y - f32::from(c.y)).atan2(x - f32::from(c.x));
+                                    if !live.act(i, DeckCmd::Touch(true)) {
+                                        return;
+                                    }
+                                    live.drag = Some(Drag::Platter { deck: i, angle: a });
+                                    cx.notify();
+                                }),
                             )
                             .child(
-                                div().text_size(px(10.)).text_color(rgb(TEXT_3)).child(
-                                    match (s.slip && !s.shadow.is_nan(), s.reverse) {
-                                        (true, _) => "slipping",
-                                        (_, true) => "reverse",
-                                        _ if beat.is_some() => "bar . beat",
-                                        _ => "time left",
+                                canvas(
+                                    move |b, _, _| bounds.set(b),
+                                    move |b, _, window, _| {
+                                        let c = b.center();
+                                        let r = f32::from(b.size.width) / 2.0 - 6.0;
+                                        let at = |a: f32, rr: f32| -> Point<Pixels> {
+                                            point(c.x + px(rr * a.cos()), c.y + px(rr * a.sin()))
+                                        };
+                                        if touched {
+                                            window.paint_quad(
+                                                gpui::fill(
+                                                    gpui::Bounds::centered_at(
+                                                        c,
+                                                        gpui::size(px(r * 2.0), px(r * 2.0)),
+                                                    ),
+                                                    alpha(color, 0.08),
+                                                )
+                                                .corner_radii(px(r)),
+                                            );
+                                        }
+                                        let tau = std::f32::consts::TAU;
+                                        let now16 = beat.map(|b| b.rem_euclid(16.0) as f32);
+                                        for k in 0..16 {
+                                            let a0 = k as f32 / 16.0 * tau - tau / 4.0 + 0.035;
+                                            let a1 =
+                                                (k + 1) as f32 / 16.0 * tau - tau / 4.0 - 0.035;
+                                            let w = if k % 4 == 0 { 7.0 } else { 5.0 };
+                                            let fill = match now16 {
+                                                Some(n) if n.floor() as usize == k => {
+                                                    rgb(color).into()
+                                                }
+                                                Some(n) if (k as f32) < n.floor() => {
+                                                    alpha(color, 0.35)
+                                                }
+                                                _ => gpui::Hsla::from(rgb(RAISED)),
+                                            };
+                                            let mut p = PathBuilder::stroke(px(w));
+                                            p.move_to(at(a0, r));
+                                            p.arc_to(
+                                                point(px(r), px(r)),
+                                                px(0.),
+                                                false,
+                                                true,
+                                                at(a1, r),
+                                            );
+                                            if let Ok(p) = p.build() {
+                                                window.paint_path(p, fill);
+                                            }
+                                        }
+                                        // No grid: a mark turning with the track instead.
+                                        if now16.is_none() && loaded {
+                                            let a = turn * tau - tau / 4.0;
+                                            let mut p = PathBuilder::stroke(px(3.));
+                                            p.move_to(at(a, r * 0.55));
+                                            p.line_to(at(a, r - 10.0));
+                                            if let Ok(p) = p.build() {
+                                                window.paint_path(p, rgb(TEXT));
+                                            }
+                                        }
                                     },
-                                ),
+                                )
+                                .size_full(),
+                            )
+                            .child(
+                                div()
+                                    .absolute()
+                                    .inset_0()
+                                    .flex()
+                                    .flex_col()
+                                    .items_center()
+                                    .justify_center()
+                                    .gap(px(2.))
+                                    .child(
+                                        div()
+                                            .font_family(MONO)
+                                            .text_size(px(24.))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(rgb(if loaded { TEXT } else { TEXT_4 }))
+                                            .child(center),
+                                    )
+                                    .child(div().text_size(px(10.)).text_color(rgb(TEXT_3)).child(
+                                        match (s.slip && !s.shadow.is_nan(), s.reverse) {
+                                            (true, _) => "slipping",
+                                            (_, true) => "reverse",
+                                            _ if beat.is_some() => "bar . beat",
+                                            _ => "time left",
+                                        },
+                                    )),
                             ),
                     ),
             )
             .child(
                 div()
+                    .relative()
+                    .h(px(ROW_H))
                     .flex()
+                    .items_center()
                     .gap(px(6.))
+                    .child(probe(&self.probes, format!("deck{i}.body.ringrow")))
                     .child(self.keylock_button(i, d.keylock, true, cx))
                     .child(self.slip_button(i, d.slip, cx)),
             )
@@ -1076,24 +1123,33 @@ impl Live {
             )
             .child(self.fader(Ctl::Tempo(i), fh, 30.0, cx))
             .child(
-                seg(format!("±{}", (range * 100.0).round()), false, 20.0)
-                    .text_size(px(10.))
-                    .px(px(6.))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |live, _, _, cx| {
-                            let d = &mut live.decks[i];
-                            let k = RANGES.iter().position(|&r| r == d.range).unwrap_or(0);
-                            let v = d.fader / d.range;
-                            d.range = RANGES[(k + 1) % RANGES.len()];
-                            // The fader stays where it is; the tempo it means changes.
-                            Ctl::Tempo(i).set(live, v as f32);
-                            cx.notify();
-                        }),
-                    ),
+                div()
+                    .relative()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap(px(5.))
+                    .child(probe(&self.probes, format!("deck{i}.body.range")))
+                    .child(
+                        seg(format!("±{}", (range * 100.0).round()), false, 20.0)
+                            .text_size(px(10.))
+                            .px(px(6.))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |live, _, _, cx| {
+                                    let d = &mut live.decks[i];
+                                    let k = RANGES.iter().position(|&r| r == d.range).unwrap_or(0);
+                                    let v = d.fader / d.range;
+                                    d.range = RANGES[(k + 1) % RANGES.len()];
+                                    // The fader stays where it is; the tempo it means changes.
+                                    Ctl::Tempo(i).set(live, v as f32);
+                                    cx.notify();
+                                }),
+                            ),
+                    )
+                    // Compact, the key shift lives here (the transport has no room for it).
+                    .when(compact, |d| d.child(self.key_steps(i, s, cx))),
             )
-            // Compact, the key shift lives here (the transport has no room for it).
-            .when(compact, |d| d.child(self.key_steps(i, s, cx)))
     }
 
     /// The key shift, two small steps and what it's at, stacked for the tempo column.
@@ -1138,7 +1194,7 @@ impl Live {
         let leader = self.leader() == Some(i);
         let compact = self.narrow;
         let size = if compact { 36.0 } else { 42.0 };
-        let round = move |label: Icon, on: bool, color: u32, held: bool| {
+        let ring = move |on: bool, color: u32, held: bool| {
             div()
                 .size(px(size))
                 .flex_none()
@@ -1151,7 +1207,23 @@ impl Live {
                 .bg(rgb(if held { alpha_mix(color) } else { CARD }))
                 .cursor_pointer()
                 .hover(|st| st.bg(rgb(RAISED)))
-                .child(icon(label, 17.).text_color(rgb(if on { color } else { TEXT_2 })))
+        };
+        let round = move |label: Icon, on: bool, color: u32, held: bool| {
+            ring(on, color, held).child(icon(label, 17.).text_color(rgb(if on {
+                color
+            } else {
+                TEXT_2
+            })))
+        };
+        // Cue says so, as a CDJ's does: an arrow read as "back to the start".
+        let cue_button = move |on: bool, held: bool| {
+            ring(on, AMBER, held).child(
+                div()
+                    .text_size(px(if compact { 10. } else { 11. }))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(rgb(if on { AMBER } else { TEXT_2 }))
+                    .child("CUE"),
+            )
         };
         let cue_lit = s.previewing || (!s.playing && s.loaded && (s.pos - s.cue).abs() < 1.0);
         let pad_x = if compact { 7.0 } else { 10.0 };
@@ -1172,7 +1244,7 @@ impl Live {
             .border_color(rgb(LINE_SOFT))
             .child(probe(&self.probes, format!("deck{i}.transport")))
             .child(
-                round(Icon::ToStart, cue_lit, AMBER, self.holding(i, Hold::Cue)).on_mouse_down(
+                cue_button(cue_lit, self.holding(i, Hold::Cue)).on_mouse_down(
                     MouseButton::Left,
                     cx.listener(move |live, _, _, cx| live.hold(i, Hold::Cue, cx)),
                 ),
