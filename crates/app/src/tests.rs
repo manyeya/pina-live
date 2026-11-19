@@ -150,6 +150,7 @@ fn the_pitch_fader_snaps_to_zero_unless_shift_is_held(cx: &mut gpui::TestAppCont
             ctl: Ctl::Tempo(0),
             from: (0.0, 0.0),
             value: 0.3,
+            travel: 240.0,
         });
         let up = if fine { -330.0 } else { -33.0 };
         live.drag_to(gpui::point(px(0.), px(up)), fine, cx);
@@ -351,6 +352,7 @@ fn shots() {
                             ctl: Ctl::Phones,
                             from: (0.0, 0.0),
                             value: -39.9,
+                            travel: 180.0,
                         });
                     }
                     "full" => live.settings.layout.library = crate::layout::LibView::Full,
@@ -616,6 +618,7 @@ fn layouts_fit() {
                         ctl: Ctl::Filter(0),
                         from: (0.0, 0.0),
                         value: -1.0,
+                        travel: 180.0,
                     });
                 }),
             ),
@@ -810,4 +813,48 @@ fn keys_move_round_the_wheel_by_semitones() {
         best.and_then(|s| camelot_shift("7B", s)).as_deref(),
         Some("8B")
     );
+}
+
+/// A fader's cap stays under the pointer whatever size it's drawn (dragged half its length,
+/// it moves half its reach), and pressed off its cap a channel fader jumps there first.
+#[gpui::test]
+fn faders_follow_the_pointer_at_any_size(cx: &mut gpui::TestAppContext) {
+    test_home();
+    let rate = 48_000.0;
+    let (e, remote) = engine(rate);
+    let (live, cx) = cx.add_window_view(|window, cx| {
+        Live::new(rate, remote, Some(e), Library::default(), window, cx)
+    });
+    live.update(cx, |live, cx| {
+        for travel in [80.0f32, 240.0] {
+            Ctl::Fader(0).set(live, 0.0);
+            live.drag = Some(crate::controls::Drag::Ctl {
+                ctl: Ctl::Fader(0),
+                from: (0.0, 0.0),
+                value: 0.0,
+                travel,
+            });
+            // Up half its length: halfway up.
+            live.drag_to(gpui::point(px(0.), px(-travel / 2.0)), false, cx);
+            let v = Ctl::Fader(0).get(live);
+            assert!((v - 0.5).abs() < 1e-3, "{travel}: {v}");
+        }
+        // Drawn 116 tall (a 16 cap, 100 of travel) from (0, 0), at the top: pressed three
+        // quarters down, it goes there.
+        live.probes.borrow_mut().insert(
+            "fader Fader(0)".into(),
+            gpui::Bounds::new(gpui::point(px(0.), px(0.)), gpui::size(px(30.), px(116.))),
+        );
+        Ctl::Fader(0).set(live, 1.0);
+        let press = gpui::MouseDownEvent {
+            button: gpui::MouseButton::Left,
+            position: gpui::point(px(15.), px(8.0 + 75.0)),
+            modifiers: gpui::Modifiers::none(),
+            click_count: 1,
+            first_mouse: false,
+        };
+        live.press_fader(Ctl::Fader(0), &press, 100.0, 16.0, cx);
+        let v = Ctl::Fader(0).get(live);
+        assert!((v - 0.25).abs() < 1e-3, "jumped to {v}");
+    });
 }

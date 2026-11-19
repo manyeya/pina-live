@@ -844,11 +844,12 @@ impl Live {
                     .cursor(gpui::CursorStyle::ResizeLeftRight)
                     .on_mouse_down(
                         MouseButton::Left,
-                        cx.listener(|live, e: &MouseDownEvent, _, cx| {
+                        cx.listener(move |live, e: &MouseDownEvent, _, cx| {
                             cx.stop_propagation();
-                            live.press_ctl(Ctl::Xf, e, cx)
+                            live.press_fader(Ctl::Xf, e, w - cap, cap, cx)
                         }),
                     )
+                    .child(probe(&self.probes, "fader Xf"))
                     .on_scroll_wheel(cx.listener(|live, e: &gpui::ScrollWheelEvent, _, cx| {
                         live.wheel_ctl(Ctl::Xf, e, cx)
                     }))

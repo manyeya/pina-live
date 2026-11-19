@@ -45,6 +45,9 @@ pub enum Drag {
         ctl: Ctl,
         from: (f32, f32),
         value: f32,
+        /// Pixels of drag across its whole reach: a fader's own length as drawn (its cap
+        /// stays under the pointer), a knob's a fixed throw.
+        travel: f32,
     },
     /// Turning the platter by hand: the angle it was last at.
     Platter {
@@ -206,6 +209,52 @@ impl Live {
             ctl,
             from: pt(e.position),
             value: ctl.get(self),
+            travel: ctl.travel(),
+        });
+        cx.notify();
+    }
+
+    /// A fader pressed: dragged by its own length as drawn (`travel`, its cap `cap` long), so
+    /// the cap follows the pointer at any size. Pressed off its cap, a channel fader or the
+    /// crossfader jumps there first; the pitch fader doesn't (a slip of the hand mid-mix).
+    pub fn press_fader(
+        &mut self,
+        ctl: Ctl,
+        e: &MouseDownEvent,
+        travel: f32,
+        cap: f32,
+        cx: &mut Context<Self>,
+    ) {
+        self.press_ctl(ctl, e, cx);
+        let Some(Drag::Ctl { from, .. }) = self.drag else {
+            return;
+        };
+        let vertical = !matches!(ctl, Ctl::Xf);
+        let b = self.probes.borrow().get(&format!("fader {ctl:?}")).copied();
+        if let Some(b) = b
+            && e.click_count < 2
+            && !matches!(ctl, Ctl::Tempo(_))
+        {
+            let along = match vertical {
+                true => from.1 - f32::from(b.origin.y),
+                false => from.0 - f32::from(b.origin.x),
+            };
+            let (lo, hi, _) = ctl.range();
+            let v = (ctl.get(self) - lo) / (hi - lo);
+            // Where the cap's middle is along it (a channel fader's top is up).
+            let at = if vertical { 1.0 - v } else { v };
+            let cap_mid = cap / 2.0 + at * travel;
+            if (along - cap_mid).abs() > cap / 2.0 {
+                let to = ((along - cap / 2.0) / travel.max(1.0)).clamp(0.0, 1.0);
+                let to = if vertical { 1.0 - to } else { to };
+                ctl.set(self, lo + to * (hi - lo));
+            }
+        }
+        self.drag = Some(Drag::Ctl {
+            ctl,
+            from,
+            value: ctl.get(self),
+            travel: travel.max(1.0),
         });
         cx.notify();
     }
@@ -213,7 +262,12 @@ impl Live {
     pub fn drag_to(&mut self, at: Point<Pixels>, fine: bool, cx: &mut Context<Self>) {
         let (x, y) = pt(at);
         match self.drag {
-            Some(Drag::Ctl { ctl, from, value }) => {
+            Some(Drag::Ctl {
+                ctl,
+                from,
+                value,
+                travel,
+            }) => {
                 let (lo, hi, _) = ctl.range();
                 let moved = match ctl {
                     Ctl::Xf => x - from.0,
@@ -222,7 +276,7 @@ impl Live {
                     _ => from.1 - y,
                 };
                 let scale = if fine { 0.1 } else { 1.0 };
-                let to = value + moved / ctl.travel() * (hi - lo) * scale;
+                let to = value + moved / travel * (hi - lo) * scale;
                 // Pulled to its detents as it nears them, unless Shift's held.
                 ctl.set(
                     self,
@@ -547,12 +601,13 @@ impl Live {
                 MouseButton::Left,
                 cx.listener(move |live, e: &MouseDownEvent, _, cx| {
                     cx.stop_propagation();
-                    live.press_ctl(ctl, e, cx)
+                    live.press_fader(ctl, e, travel, cap, cx)
                 }),
             )
             .on_scroll_wheel(
                 cx.listener(move |live, e: &ScrollWheelEvent, _, cx| live.wheel_ctl(ctl, e, cx)),
             )
+            .child(crate::probe::probe(&self.probes, format!("fader {ctl:?}")))
             .child(scale)
             .children(labels.into_iter().map(|(f, t)| {
                 let lit = zero && t == "0";
