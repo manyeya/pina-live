@@ -397,7 +397,11 @@ impl Live {
                 .text_color(rgb(TEXT_3))
                 .hover(|s| s.bg(rgb(CARD)).text_color(rgb(TEXT_2)))
                 .child(icon(Icon::Plus, 14.))
-                .child("Add a folder…")
+                .child(if cfg!(target_family = "wasm") {
+                    "Add music…"
+                } else {
+                    "Add a folder…"
+                })
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(|_, _, window, cx| {
@@ -677,15 +681,36 @@ impl Live {
                 .child(
                     div()
                         .text_color(rgb(TEXT_3))
-                        .child("Add the folders you keep it in: every track's tempo, key and phrases are found as it comes in."),
+                        .child(match cfg!(target_family = "wasm") {
+                            true => "Drop your tracks onto the page, or pick them: every track's tempo, key and phrases are found as it comes in.",
+                            false => "Add the folders you keep it in: every track's tempo, key and phrases are found as it comes in.",
+                        }),
                 )
                 .child(
-                    button("Add a folder…", true).on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|_, _, window, cx| window.dispatch_action(Box::new(crate::live::AddFolder), cx)),
-                    ),
+                    div()
+                        .flex()
+                        .gap(px(8.))
+                        .child(
+                            button(if cfg!(target_family = "wasm") { "Add music…" } else { "Add a folder…" }, true).on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|_, _, window, cx| window.dispatch_action(Box::new(crate::live::AddFolder), cx)),
+                            ),
+                        )
+                        // In a browser, Pina Studio's own songs to try it with.
+                        .when(cfg!(target_family = "wasm"), |d| {
+                            d.child(button("Try the demo tracks", false).on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|_, _, _, _| {
+                                    #[cfg(target_family = "wasm")]
+                                    crate::web::demos();
+                                }),
+                            ))
+                        }),
                 )
-                .child(div().text_size(px(11.)).text_color(rgb(TEXT_4)).child("or drop folders and files anywhere here"))
+                .child(div().text_size(px(11.)).text_color(rgb(TEXT_4)).child(match cfg!(target_family = "wasm") {
+                    true => "MP3, WAV, FLAC, AIFF, M4A or Ogg: they stay in this page, never uploaded",
+                    false => "or drop folders and files anywhere here",
+                }))
                 .into_any_element();
         }
         if n == 0 {

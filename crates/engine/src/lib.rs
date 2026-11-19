@@ -10,11 +10,13 @@ pub mod engine;
 pub mod fx;
 pub mod grid;
 pub mod library;
+pub mod memfs;
 pub mod mixer;
 pub mod output;
 pub mod part;
 pub mod record;
 pub mod stems;
+pub mod wsola;
 
 #[cfg(test)]
 mod tests;

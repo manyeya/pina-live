@@ -67,3 +67,24 @@ PINA_LIVE_SHOT=out PINA_LIVE_SHOT_TRACKS="a.mp3|b.mp3" cargo test -p pina-live s
 `cargo run --release -p pina-live-engine --example bench` times the engine's heaviest load (four
 keylocked decks with stems and both FX units on every channel: about 6% of one core on an M-series
 Mac).
+
+## Builds and installers
+
+Every push to `main` builds all three (Actions; a `vX.Y.Z` tag puts them on its release):
+
+- **macOS**: `scripts/release-mac.sh` makes `dist/PinaLive-<version>.dmg`, Apple silicon and
+  Intel, with *Install Pina Live* on it (`crates/installer`, the animated installer: decks mixing
+  while it installs). Signed ad hoc unless `PINA_SIGN_ID` names a Developer ID.
+- **Windows**: `PinaLive-<version>-windows-x64-setup.exe` (Inno Setup, `scripts/windows`) and a zip
+  of the same.
+- **Web**: Pina Live in a browser, at <https://manyeya.github.io/pina-live/>. Drop your tracks onto
+  the page (they stay in it, never uploaded) or try the demo songs. It's the same app, built to
+  WebAssembly: the keylock is `wsola.rs` (Signalsmith is C++), tracks are read from memory
+  (`memfs.rs`), and stems, plugins and recording are the desktop's. To build it:
+
+```sh
+cargo build --release --target wasm32-unknown-unknown -p pina-live
+wasm-bindgen --target web --no-typescript --out-dir web/pkg \
+  target/wasm32-unknown-unknown/release/pina-live.wasm
+cd web && python3 -m http.server   # then open http://localhost:8000
+```

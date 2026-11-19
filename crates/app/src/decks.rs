@@ -1345,7 +1345,7 @@ impl Live {
             .h(px(18.))
             .flex()
             .items_center()
-            .child(step(-1.0, "♭", cx))
+            .child(step(-1.0, FLAT, cx))
             .child(
                 div()
                     .font_family(MONO)
@@ -1357,7 +1357,7 @@ impl Live {
                         format!("{:+}", key.round())
                     }),
             )
-            .child(step(1.0, "♯", cx))
+            .child(step(1.0, SHARP, cx))
     }
 
     /// The deck's hardware along its foot, as a player's: CUE and PLAY round and lit (PLAY
@@ -1633,7 +1633,7 @@ impl Live {
             .flex()
             .items_center()
             .gap(px(3.))
-            .child(step(-1.0, "♭", cx))
+            .child(step(-1.0, FLAT, cx))
             .child(
                 display(kh)
                     .w(px(52.))
@@ -1671,7 +1671,7 @@ impl Live {
                         }),
                     ),
             )
-            .child(step(1.0, "♯", cx))
+            .child(step(1.0, SHARP, cx))
             .child(
                 key(
                     "MATCH",
@@ -1837,6 +1837,19 @@ fn paint_jog(window: &mut gpui::Window, b: gpui::Bounds<Pixels>, j: &Jog) {
         .border_color(rgb(0x26262d)),
     );
 }
+
+/// Flat and sharp: the signs natively (the system's fonts have them), words' worth in a browser
+/// (its bundled type hasn't).
+const FLAT: &str = if cfg!(target_family = "wasm") {
+    "−"
+} else {
+    "♭"
+};
+const SHARP: &str = if cfg!(target_family = "wasm") {
+    "+"
+} else {
+    "♯"
+};
 
 /// A Camelot key moved `semis` semitones: seven places round the wheel a semitone.
 pub fn camelot_shift(k: &str, semis: i32) -> Option<String> {

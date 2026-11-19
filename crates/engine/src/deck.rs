@@ -11,7 +11,12 @@
 
 use std::sync::Arc;
 
+// Keylock: Signalsmith Stretch natively; on the web (it's C++) the crate's own WSOLA.
+#[cfg(not(target_family = "wasm"))]
 use signalsmith_stretch::Stretch;
+
+#[cfg(target_family = "wasm")]
+use crate::wsola::Stretch;
 
 use crate::{
     audio::Audio,

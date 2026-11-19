@@ -67,14 +67,27 @@ pub struct Output {
 
 impl Output {
     pub fn start(engine: Engine, settings: &AudioSettings) -> Result<Output, String> {
+        Output::try_start(engine, settings).map_err(|(_, e)| e)
+    }
+
+    /// As `start`, but failing, the engine's given back to run without sound.
+    pub fn try_start(engine: Engine, settings: &AudioSettings) -> Result<Output, (Engine, String)> {
         let engine = Arc::new(Mutex::new(engine));
-        let (stream, device, channels) = open(&engine, settings)?;
-        Ok(Output {
-            engine,
-            stream: Some(stream),
-            device,
-            channels,
-        })
+        match open(&engine, settings) {
+            Ok((stream, device, channels)) => Ok(Output {
+                engine,
+                stream: Some(stream),
+                device,
+                channels,
+            }),
+            Err(e) => match Arc::try_unwrap(engine)
+                .ok()
+                .and_then(|m| m.into_inner().ok())
+            {
+                Some(engine) => Err((engine, e)),
+                None => panic!("the engine's still shared after its stream failed: {e}"),
+            },
+        }
     }
 
     /// Moves to `settings`; failing that, says why (and plays nothing).
@@ -106,6 +119,10 @@ fn open(
         .max_by_key(|c| c.channels())
         .ok_or_else(|| format!("{name} can't run at {rate} Hz"))?;
     let mut config = range.with_sample_rate(rate).config();
+    // A browser offers more channels than it'll play (it has a pair): stereo there.
+    if cfg!(target_family = "wasm") {
+        config.channels = config.channels.min(2);
+    }
     if let Some(b) = settings.buffer {
         config.buffer_size = cpal::BufferSize::Fixed(match *range.buffer_size() {
             cpal::SupportedBufferSize::Range { min, max } => b.clamp(min, max),

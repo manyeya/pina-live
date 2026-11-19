@@ -9,8 +9,9 @@ use std::{
         atomic::{AtomicBool, AtomicU32, Ordering},
         mpsc::{Receiver, channel},
     },
-    time::Instant,
 };
+
+use web_time::Instant;
 
 use gpui::{Context, Div, MouseButton, div, prelude::*, rgb};
 use pina_engine::separate::{self, Model};

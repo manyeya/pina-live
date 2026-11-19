@@ -22,8 +22,19 @@ impl Audio {
     /// A file, decoded and converted to `rate`: Pina Studio's decoder (WAV, AIFF, FLAC, MP3, and
     /// with this crate's Symphonia features M4A and Ogg too). A mono file plays on both sides.
     pub fn load(path: &Path, rate: f64) -> Result<Audio, String> {
-        let data = pina_engine::audio::engine::load_audio(path, rate)?;
-        let mut sides = data.channels().to_vec();
+        // Held in memory (a browser's file): decoded here, converted as Pina Studio would.
+        let mut sides = match crate::memfs::get(path) {
+            Some(bytes) => {
+                let (sides, from) = crate::memfs::decode(path, &bytes)?;
+                sides
+                    .iter()
+                    .map(|s| pina_engine::audio::engine::resample(s, from, rate))
+                    .collect()
+            }
+            None => pina_engine::audio::engine::load_audio(path, rate)?
+                .channels()
+                .to_vec(),
+        };
         let l = sides.first().cloned().ok_or("no audio in the file")?;
         let r = match sides.len() {
             1 => l.clone(),

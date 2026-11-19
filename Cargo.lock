@@ -1174,6 +1174,8 @@ dependencies = [
  "block2 0.6.2",
  "coreaudio-rs",
  "dasp_sample",
+ "futures-channel",
+ "futures-util",
  "jni 0.22.4",
  "js-sys",
  "libc",
@@ -1189,6 +1191,8 @@ dependencies = [
  "objc2-core-audio-types",
  "objc2-core-foundation",
  "objc2-foundation 0.3.2",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "windows 0.62.2",
  "windows-core 0.62.2",
@@ -2430,7 +2434,6 @@ dependencies = [
  "futures",
  "parking_lot",
  "rand 0.9.5",
- "wasm_thread",
  "web-time",
 ]
 
@@ -2493,7 +2496,6 @@ dependencies = [
  "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wasm_thread",
  "web-sys",
  "web-time",
 ]
@@ -4419,7 +4421,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 [[package]]
 name = "pina-engine"
 version = "0.4.0"
-source = "git+https://github.com/manyeya/pina-studio?rev=26bc9ca2c2ed3f8751ee5a3cf036f9dc0c3ef10e#26bc9ca2c2ed3f8751ee5a3cf036f9dc0c3ef10e"
+source = "git+https://github.com/manyeya/pina-studio?rev=d1a9ae74bd32e385ccbb5bece137ab5d6a4b1431#d1a9ae74bd32e385ccbb5bece137ab5d6a4b1431"
 dependencies = [
  "block2 0.6.2",
  "clap-sys",
@@ -4454,6 +4456,7 @@ dependencies = [
  "gpui-pre",
  "gpui-pre-apple",
  "gpui-pre-platform",
+ "js-sys",
  "midir",
  "pina-engine",
  "pina-live-engine",
@@ -4461,6 +4464,10 @@ dependencies = [
  "rtrb",
  "serde",
  "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "web-time",
 ]
 
 [[package]]
@@ -4475,6 +4482,7 @@ dependencies = [
  "serde_json",
  "signalsmith-stretch",
  "symphonia",
+ "web-time",
 ]
 
 [[package]]
@@ -6641,18 +6649,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b1f9c3798725016c6ee5f2f57869ec0831e8bbc0ab0310a86e787e97f41389e"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "wasm_thread"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7516db7f32decdadb1c3b8deb1b7d78b9df7606c5cc2f6241737c2ab3a0258e"
-dependencies = [
- "futures",
- "js-sys",
- "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]

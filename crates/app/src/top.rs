@@ -120,7 +120,10 @@ impl Live {
             .when_some(self.rec_note.clone(), |d, note| {
                 d.child(div().text_size(px(11.)).text_color(rgb(TEXT_3)).child(note))
             })
-            .child(self.record_button(cx))
+            // Recording writes a WAV as it goes, which a browser can't (yet).
+            .when(!cfg!(target_family = "wasm"), |d| {
+                d.child(self.record_button(cx))
+            })
             .child({
                 let n = self.midi.as_ref().map_or(0, |m| m.devices.len());
                 seg(

@@ -5,7 +5,6 @@
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
@@ -33,6 +32,10 @@ pub fn data_dir() -> PathBuf {
     let base = std::env::var_os("APPDATA").map(PathBuf::from);
     #[cfg(not(any(target_os = "macos", windows)))]
     let base = std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share"));
+    // No folders at all in a browser (and std's temp_dir panics there): a name that's never read.
+    #[cfg(target_family = "wasm")]
+    return base.unwrap_or_else(|| PathBuf::from("/")).join("Pina Live");
+    #[cfg(not(target_family = "wasm"))]
     base.unwrap_or_else(std::env::temp_dir).join("Pina Live")
 }
 
@@ -52,8 +55,8 @@ pub fn id_of(path: &Path) -> u64 {
 }
 
 pub fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
+    web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
 }
 
@@ -211,7 +214,7 @@ impl Track {
 
 fn modified(meta: Option<&std::fs::Metadata>) -> u64 {
     meta.and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map_or(0, |d| d.as_secs())
 }
 
@@ -428,6 +431,11 @@ pub fn wave_file(id: u64) -> PathBuf {
 
 pub fn save_wave(id: u64, w: &Wave) -> Result<(), String> {
     let f = wave_file(id);
+    // A browser has no folders: kept in memory, as its tracks are.
+    if cfg!(target_family = "wasm") {
+        crate::memfs::put(&f, w.to_bytes());
+        return Ok(());
+    }
     if let Some(d) = f.parent() {
         std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
     }
@@ -435,7 +443,11 @@ pub fn save_wave(id: u64, w: &Wave) -> Result<(), String> {
 }
 
 pub fn load_wave(id: u64) -> Option<Wave> {
-    Wave::from_bytes(&std::fs::read(wave_file(id)).ok()?)
+    let f = wave_file(id);
+    if let Some(bytes) = crate::memfs::get(&f) {
+        return Wave::from_bytes(&bytes);
+    }
+    Wave::from_bytes(&std::fs::read(f).ok()?)
 }
 
 #[cfg(test)]

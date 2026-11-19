@@ -2,13 +2,10 @@
 //! It holds the engine's remote (commands out, status in), what each deck has loaded, the
 //! mixer's controls as last set, and the library, analysed in the background.
 
-use std::{
-    cell::Cell,
-    path::PathBuf,
-    rc::Rc,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{cell::Cell, path::PathBuf, rc::Rc, sync::Arc, time::Duration};
+
+// The clock: the system's natively, the browser's on the web (std's panics there).
+use web_time::Instant;
 
 use gpui::{
     App, Bounds, Context, ExternalPaths, FocusHandle, Focusable, KeyBinding, MouseButton,
@@ -284,10 +281,67 @@ pub struct Live {
 
 impl Live {
     /// The app as it opens: the engine on the sound card, the library from last time.
+    /// In a browser: the sound started, from the engine that's been running silently, now that
+    /// there's been a click (anywhere else: nothing).
+    pub fn wake_audio(&mut self) {
+        #[cfg(target_family = "wasm")]
+        if self.output.is_none()
+            && let Some(off) = self.offline.take()
+        {
+            let Offline {
+                engine,
+                since,
+                bufs,
+            } = off;
+            match Output::try_start(engine, &crate::settings::Settings::load().audio) {
+                Ok(o) => self.output = Some(o),
+                // Still running, silently: the decks go on.
+                Err((engine, err)) => {
+                    self.offline = Some(Offline {
+                        engine,
+                        since,
+                        bufs,
+                    });
+                    self.audio_note = Some(format!("No sound: {err}"));
+                }
+            }
+        }
+    }
+
+    /// In a browser: files dropped onto the page or picked, held in memory, into the library and
+    /// analysed; the first onto the first empty deck. Whether any came.
+    #[cfg(target_family = "wasm")]
+    fn take_web_files(&mut self, cx: &mut Context<Self>) -> bool {
+        let files = crate::web::take_arrived();
+        let mut ids = Vec::new();
+        for (name, bytes) in files {
+            let path = std::path::PathBuf::from("/Pina Live").join(&name);
+            if !library::is_audio(&path) {
+                continue;
+            }
+            pina_live_engine::memfs::put(&path, bytes);
+            ids.push(self.lib.add_file(&path));
+        }
+        if ids.is_empty() {
+            return false;
+        }
+        self.queue_analysis(&ids);
+        let free = (0..self.shown()).find(|&d| self.decks[d].track.is_none());
+        if let (Some(d), Some(&id)) = (free, ids.first()) {
+            self.load(d, id, cx);
+        }
+        true
+    }
+
     pub fn start(window: &mut Window, cx: &mut Context<Self>) -> Live {
         let settings = crate::settings::Settings::load().audio;
         let rate = device_rate(&settings).unwrap_or(48_000) as f64;
         let (e, remote) = engine(rate);
+        // A browser plays nothing before a click: the decks run silently till the first one
+        // (wake_audio).
+        #[cfg(target_family = "wasm")]
+        let (output, offline, note) = (None, Some(e), None);
+        #[cfg(not(target_family = "wasm"))]
         let (output, offline, note) = match Output::start(e, &settings) {
             Ok(o) => (Some(o), None, None),
             Err(err) => {
@@ -473,7 +527,10 @@ impl Live {
         cx: &mut Context<Self>,
     ) -> Live {
         let browser = Browser::new(window, cx);
-        let workers = std::thread::available_parallelism().map_or(2, |n| (n.get() / 2).clamp(1, 6));
+        let workers = match cfg!(target_family = "wasm") {
+            true => 0,
+            false => std::thread::available_parallelism().map_or(2, |n| (n.get() / 2).clamp(1, 6)),
+        };
         let mut live = Live {
             rate,
             remote,
@@ -627,6 +684,10 @@ impl Live {
         }
         if self.download.is_some() {
             self.poll_download();
+            changed = true;
+        }
+        #[cfg(target_family = "wasm")]
+        if self.take_web_files(cx) {
             changed = true;
         }
         for (id, found) in self.analyzer.poll() {
@@ -981,6 +1042,18 @@ impl Live {
     }
 
     fn pick_folder(&mut self, cx: &mut Context<Self>) {
+        // A browser has no folders: its file picker, for audio.
+        #[cfg(target_family = "wasm")]
+        {
+            let _ = cx;
+            crate::web::pick();
+        }
+        #[cfg(not(target_family = "wasm"))]
+        self.pick_folder_native(cx);
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    fn pick_folder_native(&mut self, cx: &mut Context<Self>) {
         let picked = cx.prompt_for_paths(gpui::PathPromptOptions {
             files: false,
             directories: true,
@@ -1233,6 +1306,10 @@ impl Render for Live {
             .on_key_down(cx.listener(Self::key_down))
             .on_key_up(cx.listener(Self::key_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
+            // In a browser, the first click starts the sound.
+            .when(cfg!(target_family = "wasm"), |d| {
+                d.capture_any_mouse_down(cx.listener(|live, _, _, _| live.wake_audio()))
+            })
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_action(cx.listener(|live, _: &AddFolder, _, cx| live.pick_folder(cx)))
             .on_action(cx.listener(|live, _: &ToggleFour, _, cx| {

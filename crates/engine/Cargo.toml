@@ -5,16 +5,24 @@ edition.workspace = true
 
 [dependencies]
 pina-engine.workspace = true
-cpal = "0.18"
 rtrb = "0.3"
 # Recording the mix: WAV, as Pina Studio writes it.
 hound = "3.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# Keylock: time-stretch whose rate can move every block, as a pitch fader does.
-signalsmith-stretch = "0.1"
+# The clock: std's natively, the browser's in a web build (std's Instant panics there).
+web-time = "1"
 # The formats a DJ's library has that Pina Studio doesn't read: AAC and ALAC in M4A, Ogg Vorbis.
 # Same version as pina-engine's, so its decoder reads them too.
 symphonia = { version = "0.6.1", default-features = false, features = ["isomp4", "aac", "alac", "ogg", "vorbis"] }
+
+# Keylock: time-stretch whose rate can move every block, as a pitch fader does (C++: native
+# only; a web build has src/wsola.rs). The sound card by cpal; in a browser, its Web Audio.
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+signalsmith-stretch = "0.1"
+cpal = "0.18"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+cpal = { version = "0.18", features = ["wasm-bindgen"] }
 
 [dev-dependencies]

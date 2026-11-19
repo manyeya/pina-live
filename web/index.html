@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pina Live</title>
+  <meta name="description" content="Pina Live, DJ software on Pina Studio's engine, in your browser: drop your music in and mix.">
+  <meta name="theme-color" content="#0c0c0f">
+  <link rel="icon" type="image/png" href="icon.png">
+  <style>
+    html, body { margin: 0; height: 100%; background: #0c0c0f; overflow: hidden; }
+    body { font-family: -apple-system, "Segoe UI", sans-serif; color: #d4d4da; }
+    canvas { display: block; width: 100vw; height: 100vh; outline: none; }
+    /* Until the app's drawn: its icon, and what's happening. */
+    #loading {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 18px; pointer-events: none;
+    }
+    #loading img { width: 96px; height: 96px; animation: spin 2.4s linear infinite; }
+    #loading p { margin: 0; font-size: 13px; color: #8a8a95; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <img src="icon.png" alt="">
+    <p id="status">Loading Pina Live…</p>
+  </div>
+  <script type="module">
+    import init from "./pkg/pina-live.js";
+    const status = document.getElementById("status");
+    init()
+      .then(() => {
+        document.getElementById("loading").remove();
+      })
+      .catch((e) => {
+        status.textContent = "Pina Live couldn't start here: " + e;
+        console.error(e);
+      });
+  </script>
+</body>
+</html>

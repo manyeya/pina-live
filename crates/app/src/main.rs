@@ -25,13 +25,32 @@ mod tests;
 mod top;
 mod ui;
 mod wave;
+#[cfg(target_family = "wasm")]
+mod web;
 
 use gpui::{App, AppContext, Bounds, Menu, MenuItem, WindowBounds, WindowOptions, px, size};
 
 use live::*;
 
+#[cfg(not(target_family = "wasm"))]
 fn main() {
-    gpui_platform::application().run(move |cx: &mut App| {
+    run(gpui_platform::application());
+}
+
+/// In a browser, wasm-bindgen starts it (its `main` isn't run there).
+#[cfg(target_family = "wasm")]
+fn main() {}
+
+#[cfg(target_family = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(start)]
+pub fn start() {
+    gpui_platform::web_init();
+    web::listen();
+    run(gpui_platform::single_threaded_web());
+}
+
+fn run(app: gpui::Application) {
+    app.run(move |cx: &mut App| {
         if let Err(e) = cx.text_system().add_fonts(ui::theme::fonts()) {
             eprintln!("fonts: {e}");
         }

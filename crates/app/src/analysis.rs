@@ -18,6 +18,8 @@ use pina_live_engine::analyze::{Analysis, Tags, Wave, analyze};
 pub type Found = (u64, Result<(Analysis, Tags, Wave), String>);
 
 pub struct Analyzer {
+    #[cfg(target_family = "wasm")]
+    tx: Sender<Found>,
     queue: Arc<Mutex<VecDeque<(u64, PathBuf)>>>,
     rx: Receiver<Found>,
     /// Queued or being analysed.
@@ -33,7 +35,13 @@ impl Analyzer {
         let queue: Arc<Mutex<VecDeque<(u64, PathBuf)>>> = Arc::default();
         let (tx, rx) = channel();
         let stop = Arc::new(AtomicBool::new(false));
-        for _ in 0..workers.max(1) {
+        // A browser has no threads: there, `poll` analyses a track itself, one a frame.
+        let workers = if cfg!(target_family = "wasm") {
+            0
+        } else {
+            workers.max(1)
+        };
+        for _ in 0..workers {
             let (queue, tx, stop): (_, Sender<Found>, _) =
                 (queue.clone(), tx.clone(), stop.clone());
             thread::spawn(move || {
@@ -51,6 +59,8 @@ impl Analyzer {
             });
         }
         Analyzer {
+            #[cfg(target_family = "wasm")]
+            tx,
             queue,
             rx,
             pending: HashSet::new(),
@@ -91,6 +101,13 @@ impl Analyzer {
 
     /// What's been found since last asked.
     pub fn poll(&mut self) -> Vec<Found> {
+        #[cfg(target_family = "wasm")]
+        {
+            let next = self.queue.lock().ok().and_then(|mut q| q.pop_front());
+            if let Some((id, path)) = next {
+                let _ = self.tx.send((id, analyze(&path)));
+            }
+        }
         let found: Vec<Found> = self.rx.try_iter().collect();
         for (id, _) in &found {
             if self.pending.remove(id) {

@@ -61,7 +61,7 @@ impl Analysis {
 
 /// A file studied, its tags and its waveform.
 pub fn analyze(path: &Path) -> Result<(Analysis, Tags, Wave), String> {
-    let (mut sides, rate) = pina_engine::audio::engine::read_audio(path)?;
+    let (mut sides, rate) = crate::memfs::read(path)?;
     if sides.is_empty() {
         return Err("no audio in the file".into());
     }

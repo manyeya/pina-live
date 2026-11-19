@@ -8,7 +8,7 @@ edition = "2024"
 
 [workspace.dependencies]
 # Pina Studio's engine: decoding, song study (tempo, key, form, loudness), its effects and stems.
-pina-engine = { git = "https://github.com/manyeya/pina-studio", rev = "26bc9ca2c2ed3f8751ee5a3cf036f9dc0c3ef10e" }
+pina-engine = { git = "https://github.com/manyeya/pina-studio", rev = "d1a9ae74bd32e385ccbb5bece137ab5d6a4b1431" }
 
 # As Pina Studio: dependencies fast even in dev builds (gpui and DSP can't keep up unoptimized),
 # our own code with line numbers only.

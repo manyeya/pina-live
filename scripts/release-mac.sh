@@ -69,13 +69,14 @@ codesign --verify --deep --strict "$INSTALLER"
 say "The disk image"
 UNSIGNED=""
 [ -z "${PINA_SIGN_ID:-}" ] && UNSIGNED="--unsigned"
-python3 scripts/dmg-background.py "$BUILD" "$VERSION" $UNSIGNED
-tiffutil -cathidpicheck "$BUILD/background.png" "$BUILD/background@2x.png" -out "$BUILD/background.tiff" >/dev/null
+# dmgbuild and Pillow (for the picture), in an environment of their own.
 VENV=target/dmgbuild-venv
-if [ ! -x "$VENV/bin/dmgbuild" ]; then
+if [ ! -x "$VENV/bin/dmgbuild" ] || ! "$VENV/bin/python3" -c "import PIL" 2>/dev/null; then
   python3 -m venv "$VENV"
-  "$VENV/bin/pip" install -q dmgbuild==1.6.5
+  "$VENV/bin/pip" install -q dmgbuild==1.6.5 pillow
 fi
+"$VENV/bin/python3" scripts/dmg-background.py "$BUILD" "$VERSION" $UNSIGNED
+tiffutil -cathidpicheck "$BUILD/background.png" "$BUILD/background@2x.png" -out "$BUILD/background.tiff" >/dev/null
 "$VENV/bin/dmgbuild" -s scripts/dmg-settings.py \
   -D installer="$INSTALLER" \
   -D background="$BUILD/background.tiff" \
