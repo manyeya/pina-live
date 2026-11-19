@@ -72,7 +72,8 @@ pub fn budget(panel: f32, compact: bool, four: bool, card_w: f32) -> Budget {
     let spare = (2.0 * (pad - PAD_MAX)).max(0.0);
     let (pad, inner) = (pad.min(PAD_MAX), inner - spare);
     // The tempo's column: its caption, its readout, its reach, and (compact) the key.
-    let tempo = 12.0 + 14.0 + 20.0 + 3.0 * 5.0 + if compact { 18.0 + 5.0 } else { 0.0 };
+    // The tempo's column: its caption, its readout, its reach, the nudges and (compact) the key.
+    let tempo = 12.0 + 14.0 + 20.0 + 18.0 + 4.0 * 5.0 + if compact { 18.0 + 5.0 } else { 0.0 };
     Budget {
         over: over_h(compact) + spare,
         body: inner + BODY_PT + BODY_PB,
@@ -419,7 +420,24 @@ impl Live {
                             .flex()
                             .flex_col()
                             .items_end()
-                            .child(caption("BPM"))
+                            // The track's own tempo beside it, when it's playing at another.
+                            .child(
+                                div()
+                                    .h(px(12.))
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(5.))
+                                    .when(s.bpm > 0.0 && (s.tempo - 1.0).abs() > 0.0005, |d| {
+                                        d.child(
+                                            div()
+                                                .font_family(MONO)
+                                                .text_size(px(9.))
+                                                .text_color(rgb(TEXT_4))
+                                                .child(format!("{:.2} →", s.bpm / s.tempo)),
+                                        )
+                                    })
+                                    .child(caption("BPM")),
+                            )
                             .child(
                                 div()
                                     .px(px(3.))
@@ -584,7 +602,14 @@ impl Live {
                     .text_size(px(11.))
                     .text_color(rgb(TEXT_3))
                     .child(clock(now.max(0.0), true))
-                    .child(self.beat_counter(i, s))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .children(self.phase_meter(i, s))
+                            .child(self.beat_counter(i, s)),
+                    )
                     .child(
                         div()
                             .text_color(rgb(if s.loaded && s.playing && left < 30.0 {
@@ -595,6 +620,59 @@ impl Live {
                             .child(clock(-left.max(0.0), true)),
                     ),
             )
+    }
+
+    /// How far this deck's beat is from the one it's mixed against (the leader; the leader
+    /// against the next deck playing): a bar a beat wide, its middle where they're together, lit
+    /// green together, amber close, red off. None with nothing to measure against.
+    fn phase_meter(&self, i: usize, s: &DeckStatus) -> Option<Div> {
+        let all = self.status().decks;
+        let other = match self.leader() {
+            Some(l) if l != i => Some(l),
+            _ => (0..all.len()).find(|&d| d != i && all[d].playing && !all[d].beat.is_nan()),
+        }?;
+        let o = all[other];
+        if s.beat.is_nan() || o.beat.is_nan() || !o.loaded || !s.loaded {
+            return None;
+        }
+        let off = ((s.beat - o.beat + 0.5).rem_euclid(1.0) - 0.5) as f32;
+        let w = 64.0;
+        let color = match off.abs() {
+            a if a < 0.02 => MINT,
+            a if a < 0.08 => AMBER,
+            _ => RECORD,
+        };
+        let (a, z) = (w / 2.0, w / 2.0 + off * w);
+        Some(
+            div()
+                .relative()
+                .w(px(w))
+                .h(px(7.))
+                .rounded(px(2.))
+                .bg(rgb(WELL))
+                .border_1()
+                .border_color(rgb(LINE))
+                // Quarter beats marked, the middle brighter.
+                .children([0.25f32, 0.5, 0.75].map(|f| {
+                    div()
+                        .absolute()
+                        .top_0()
+                        .bottom_0()
+                        .left(px(f * w - 0.5))
+                        .w(px(1.))
+                        .bg(rgb(if f == 0.5 { TEXT_3 } else { LINE_STRONG }))
+                }))
+                .child(
+                    div()
+                        .absolute()
+                        .top(px(1.))
+                        .bottom(px(1.))
+                        .left(px(a.min(z)))
+                        .w(px((a - z).abs().max(2.0)))
+                        .rounded(px(1.))
+                        .bg(rgb(color)),
+                ),
+        )
     }
 
     /// "33.2": the bar and beat it's at, counted from the grid's first downbeat.
@@ -1102,9 +1180,27 @@ impl Live {
     fn tempo_column(&self, i: usize, s: &DeckStatus, fh: f32, cx: &mut Context<Self>) -> Div {
         let range = self.decks[i].range;
         let compact = self.narrow;
+        let w = if compact { 40. } else { 48. };
+        // Held, the track's nudged slower or faster (a twentieth), as a jog's edge does.
+        let nudge = |by: f64, label: &'static str, cx: &mut Context<Self>| {
+            let held = self.holding(i, Hold::Bend(by));
+            seg(label, held, 18.0)
+                .flex_1()
+                .justify_center()
+                .px(px(0.))
+                .font_family(MONO)
+                .text_size(px(11.))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |live, _, _, cx| {
+                        cx.stop_propagation();
+                        live.hold(i, Hold::Bend(by), cx)
+                    }),
+                )
+        };
         div()
             .relative()
-            .w(px(if compact { 40. } else { 48. }))
+            .w(px(w))
             .flex_none()
             .flex()
             .flex_col()
@@ -1119,9 +1215,20 @@ impl Live {
                     .font_family(MONO)
                     .text_size(px(10.5))
                     .text_color(rgb(if s.sync { ACCENT_TEXT } else { TEXT_2 }))
-                    .child(format!("{:+.1}%", (s.tempo - 1.0) * 100.0)),
+                    .child(match compact {
+                        true => format!("{:+.1}%", (s.tempo - 1.0) * 100.0),
+                        false => format!("{:+.2}%", (s.tempo - 1.0) * 100.0),
+                    }),
             )
-            .child(self.fader(Ctl::Tempo(i), fh, 30.0, cx))
+            .child(self.fader(Ctl::Tempo(i), fh, w, cx))
+            .child(
+                div()
+                    .w(px(w))
+                    .flex()
+                    .gap(px(2.))
+                    .child(nudge(-0.05, "−", cx))
+                    .child(nudge(0.05, "+", cx)),
+            )
             .child(
                 div()
                     .relative()

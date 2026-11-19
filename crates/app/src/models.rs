@@ -325,7 +325,9 @@ impl Live {
                             .when(armed, |b| b.text_color(rgb(RECORD)))
                             .on_mouse_down(
                                 MouseButton::Left,
-                                cx.listener(move |live, _, _, cx| live.remove_model(dir.clone(), cx)),
+                                cx.listener(move |live, _, _, cx| {
+                                    live.remove_model(dir.clone(), cx)
+                                }),
                             ),
                     ),
             );

@@ -59,7 +59,10 @@ fn main() {
                 e += (y.l[i] as f64).powi(2) + (y.r[i] as f64).powi(2);
                 d += ((x.l[i] - y.l[i]) as f64).powi(2) + ((x.r[i] - y.r[i]) as f64).powi(2);
             }
-            println!("  {s}: {:.1} dB under the stem", 10.0 * (e / d.max(1e-12)).log10());
+            println!(
+                "  {s}: {:.1} dB under the stem",
+                10.0 * (e / d.max(1e-12)).log10()
+            );
         }
     }
 }

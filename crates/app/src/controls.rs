@@ -2,7 +2,10 @@
 //! (shift for fine), the platter and waveform under the pointer (scratching), and buttons that
 //! act while held (cue, rolls, censor), let go wherever the pointer ends up.
 
-use gpui::{Context, Div, MouseButton, MouseDownEvent, Pixels, Point, div, prelude::*, rgb};
+use gpui::{
+    Bounds, Context, Div, MouseButton, MouseDownEvent, Pixels, Point, ScrollWheelEvent, canvas,
+    div, fill, point, prelude::*, rgb, size,
+};
 use pina_live_engine::{deck::DeckCmd, mixer::MixCmd};
 
 use crate::{
@@ -33,6 +36,8 @@ pub enum Hold {
     HotCue(usize),
     Roll(f64),
     Censor,
+    /// The pitch bent (nudged) while it's held: by this share of its speed.
+    Bend(f64),
 }
 
 pub enum Drag {
@@ -217,7 +222,16 @@ impl Live {
                     _ => from.1 - y,
                 };
                 let scale = if fine { 0.1 } else { 1.0 };
-                ctl.set(self, value + moved / ctl.travel() * (hi - lo) * scale);
+                let to = value + moved / ctl.travel() * (hi - lo) * scale;
+                // Pulled to its detents as it nears them, unless Shift's held.
+                ctl.set(
+                    self,
+                    if fine {
+                        to
+                    } else {
+                        crate::detail::snap(ctl, to)
+                    },
+                );
             }
             Some(Drag::Platter { deck, angle }) => {
                 let b = self.decks[deck].platter.get();
@@ -272,6 +286,7 @@ impl Live {
             Hold::HotCue(k) => Some(Target::HotCue(deck, k)),
             Hold::Roll(b) => Some(Target::Roll(deck, b)),
             Hold::Censor => Some(Target::Censor(deck)),
+            Hold::Bend(_) => None,
         };
         if let Some(t) = target
             && self.arm(t, cx)
@@ -283,6 +298,7 @@ impl Live {
             Hold::HotCue(slot) => DeckCmd::HotCue { slot, down: true },
             Hold::Roll(beats) => DeckCmd::Roll { beats, on: true },
             Hold::Censor => DeckCmd::Censor(true),
+            Hold::Bend(b) => DeckCmd::Bend(b),
         };
         self.deck(deck, c);
         self.drag = Some(Drag::Hold { deck, hold });
@@ -295,6 +311,7 @@ impl Live {
             Hold::HotCue(slot) => DeckCmd::HotCue { slot, down: false },
             Hold::Roll(beats) => DeckCmd::Roll { beats, on: false },
             Hold::Censor => DeckCmd::Censor(false),
+            Hold::Bend(_) => DeckCmd::Bend(0.0),
         };
         self.deck(deck, c);
     }
@@ -303,7 +320,34 @@ impl Live {
         matches!(self.drag, Some(Drag::Hold { deck: d, hold: h }) if d == deck && h == hold)
     }
 
-    /// A knob with its caption above: dragged up and down, double-clicked home.
+    /// The wheel over a control: a notch a step (a tenth with Shift), the way the control's
+    /// drawn moving (up is up; the pitch fader's cap goes up, so it slows).
+    pub fn wheel_ctl(&mut self, ctl: Ctl, e: &ScrollWheelEvent, cx: &mut Context<Self>) {
+        let dy = f32::from(e.delta.pixel_delta(px(20.)).y) / 20.0;
+        if dy == 0.0 {
+            return;
+        }
+        let sign = if matches!(ctl, Ctl::Tempo(_)) {
+            -1.0
+        } else {
+            1.0
+        };
+        let fine = if e.modifiers.shift { 0.1 } else { 1.0 };
+        ctl.set(
+            self,
+            ctl.get(self) + sign * dy * crate::detail::step(ctl) * fine,
+        );
+        cx.stop_propagation();
+        cx.notify();
+    }
+
+    /// Whether `ctl` is being dragged.
+    pub fn turning(&self, ctl: Ctl) -> bool {
+        matches!(self.drag, Some(Drag::Ctl { ctl: c, .. }) if c == ctl)
+    }
+
+    /// A knob with its caption above (what it reads while it's turned): dragged up and down,
+    /// wheeled, double-clicked home.
     pub fn knob(
         &self,
         ctl: Ctl,
@@ -319,6 +363,7 @@ impl Live {
             false => (v - lo) / (hi - lo),
         };
         let on = self.mix_lit(ctl);
+        let turning = self.turning(ctl);
         div()
             .flex()
             .flex_col()
@@ -327,10 +372,19 @@ impl Live {
             .when(!caption.is_empty(), |d| {
                 d.child(
                     div()
+                        .h(px(11.))
+                        .line_height(px(11.))
                         .text_size(px(9.))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(rgb(TEXT_4))
-                        .child(caption),
+                        .whitespace_nowrap()
+                        .when(turning, |d| {
+                            d.font_family(MONO).text_color(rgb(ACCENT_TEXT))
+                        })
+                        .when(!turning, |d| d.text_color(rgb(TEXT_4)))
+                        .child(match turning {
+                            true => crate::detail::value_text(self, ctl, v),
+                            false => caption.to_string(),
+                        }),
                 )
             })
             .child(
@@ -343,10 +397,13 @@ impl Live {
                             live.press_ctl(ctl, e, cx)
                         }),
                     )
-                    .child(knob(
+                    .on_scroll_wheel(cx.listener(move |live, e: &ScrollWheelEvent, _, cx| {
+                        live.wheel_ctl(ctl, e, cx)
+                    }))
+                    .child(crate::detail::knob(
                         shown,
                         size,
-                        if on { color } else { TEXT_3 },
+                        if on || turning { color } else { TEXT_3 },
                         ctl.bipolar(),
                     )),
             )
@@ -358,16 +415,132 @@ impl Live {
         (self.ctl_value(ctl) - home).abs() > 0.01
     }
 
-    /// A vertical fader `h` tall: its cap where it's set, dragged anywhere on it.
+    /// A vertical fader `h` tall and `w` wide: its slot, its scale of ticks (the pitch fader's
+    /// numbered, −8 to +8 for ±8, its 0 lit when it's there; a channel fader's either side of
+    /// the slot), how far the pitch is pulled from the middle, where sync has really taken the
+    /// tempo when that's not where the fader is, and its cap with a grip. Dragged anywhere on
+    /// it, snapping at its detents (Shift passes them by), wheeled, double-clicked home.
     pub fn fader(&self, ctl: Ctl, h: f32, w: f32, cx: &mut Context<Self>) -> Div {
         let (lo, hi, _) = ctl.range();
+        let raw = self.ctl_value(ctl);
         // Held at its end past its range (sync can take the tempo past the pitch fader's ±).
-        let v = ((self.ctl_value(ctl) - lo) / (hi - lo)).clamp(0.0, 1.0);
-        let tempo = matches!(ctl, Ctl::Tempo(_));
+        let v = ((raw - lo) / (hi - lo)).clamp(0.0, 1.0);
+        let deck = match ctl {
+            Ctl::Tempo(d) => Some(d),
+            _ => None,
+        };
+        let tempo = deck.is_some();
         // The pitch fader's faster end is toward you (its bottom).
         let at = if tempo { v } else { 1.0 - v };
-        let cap = 14.0;
-        let top = at * (h - cap);
+        let cap = 16.0;
+        let travel = h - cap;
+        let top = at * travel;
+        // Its numbers: the ends, the halves and 0, in percent of its reach.
+        let labels: Vec<(f32, String)> = deck.map_or(Vec::new(), |d| {
+            let r = self.decks[d].range * 100.0;
+            [-1.0, -0.5, 0.0, 0.5, 1.0]
+                .into_iter()
+                .map(|f: f64| {
+                    let n = f * r;
+                    let t = match n {
+                        n if n.abs() < 1e-9 => "0".to_string(),
+                        n if n < 0.0 => format!("−{}", -n),
+                        n => format!("+{n}"),
+                    };
+                    (((f + 1.0) / 2.0) as f32, t)
+                })
+                .collect()
+        });
+        let widest = labels
+            .iter()
+            .map(|l| l.1.chars().count())
+            .max()
+            .unwrap_or(0) as f32;
+        let label_w = if tempo { widest * 4.3 + 1.0 } else { 0.0 };
+        let cap_w = if tempo { w - label_w - 7.0 } else { w - 12.0 };
+        let slot_x = if tempo {
+            label_w + 7.0 + cap_w / 2.0
+        } else {
+            w / 2.0
+        };
+        let zero = tempo && raw.abs() < 1e-6;
+        // Where sync has really put the tempo, as a share down the fader.
+        let ghost = deck.and_then(|d| {
+            let s = self.status().decks[d];
+            let real = ((s.tempo - 1.0) / self.decks[d].range) as f32;
+            (s.loaded && s.sync && (real - raw).abs() > 0.004)
+                .then_some(((real + 1.0) / 2.0).clamp(0.0, 1.0))
+        });
+        let ticks = if tempo { 16 } else { 10 };
+        let major = if tempo { 4 } else { 5 };
+        let scale = canvas(
+            |_, _, _| {},
+            move |b, _, window, _| {
+                let (x0, y0) = (f32::from(b.origin.x), f32::from(b.origin.y));
+                let q = |window: &mut gpui::Window, x: f32, y: f32, w: f32, h: f32, c: u32| {
+                    window.paint_quad(fill(
+                        Bounds::new(point(px(x0 + x), px(y0 + y)), size(px(w), px(h))),
+                        rgb(c),
+                    ))
+                };
+                for k in 0..=ticks {
+                    let y = cap / 2.0 + k as f32 / ticks as f32 * travel - 0.5;
+                    let mid = tempo && k == ticks / 2;
+                    let big = k % major == 0;
+                    let len = if mid {
+                        6.0
+                    } else if big {
+                        5.0
+                    } else {
+                        3.0
+                    };
+                    let c = if mid {
+                        TEXT_3
+                    } else if big {
+                        LINE_STRONG
+                    } else {
+                        LINE
+                    };
+                    match tempo {
+                        true => q(window, label_w + 6.0 - len, y, len, 1.0, c),
+                        false => {
+                            q(window, 5.0 - len, y, len, 1.0, c);
+                            q(window, w - 5.0, y, len, 1.0, c);
+                        }
+                    }
+                }
+                // The slot, sunk.
+                window.paint_quad(
+                    fill(
+                        Bounds::new(
+                            point(px(x0 + slot_x - 2.5), px(y0 + cap / 2.0 - 2.0)),
+                            size(px(5.), px(travel + 4.0)),
+                        ),
+                        rgb(WELL),
+                    )
+                    .corner_radii(px(2.5))
+                    .border_widths(px(1.))
+                    .border_color(rgb(LINE)),
+                );
+                // How far the pitch is pulled from the middle.
+                if tempo && !zero {
+                    let (a, z) = (cap / 2.0 + travel / 2.0, top + cap / 2.0);
+                    q(window, slot_x - 1.0, a.min(z), 2.0, (a - z).abs(), ACCENT);
+                }
+                if let Some(g) = ghost {
+                    q(
+                        window,
+                        label_w,
+                        cap / 2.0 + g * travel - 1.0,
+                        7.0,
+                        2.0,
+                        ACCENT_TEXT,
+                    );
+                }
+            },
+        )
+        .absolute()
+        .inset_0();
         div()
             .relative()
             .w(px(w))
@@ -381,49 +554,60 @@ impl Live {
                     live.press_ctl(ctl, e, cx)
                 }),
             )
-            // Its slot, and (the pitch fader's) the middle marked.
-            .child(
-                div()
-                    .absolute()
-                    .left(px(w / 2.0 - 2.0))
-                    .top(px(cap / 2.0))
-                    .w(px(4.))
-                    .h(px(h - cap))
-                    .rounded(px(2.))
-                    .bg(rgb(WELL))
-                    .border_1()
-                    .border_color(rgb(LINE)),
+            .on_scroll_wheel(
+                cx.listener(move |live, e: &ScrollWheelEvent, _, cx| live.wheel_ctl(ctl, e, cx)),
             )
-            .when(tempo, |d| {
-                d.child(
-                    div()
-                        .absolute()
-                        .left(px(2.))
-                        .top(px(h / 2.0 - 0.5))
-                        .w(px(w - 4.0))
-                        .h(px(1.))
-                        .bg(rgb(LINE_STRONG)),
-                )
-            })
+            .child(scale)
+            .children(labels.into_iter().map(|(f, t)| {
+                let lit = zero && t == "0";
+                div()
+                    .absolute()
+                    .left_0()
+                    .w(px(label_w))
+                    .top(px(cap / 2.0 + f * travel - 5.0))
+                    .h(px(10.))
+                    .line_height(px(10.))
+                    .flex()
+                    .justify_end()
+                    .font_family(MONO)
+                    .text_size(px(7.))
+                    .text_color(rgb(if lit { MINT } else { TEXT_4 }))
+                    .child(t)
+            }))
+            // The cap: lit from above, ridged to grip, its line across where it's set.
             .child(
                 div()
                     .absolute()
-                    .left(px(1.))
+                    .left(px(slot_x - cap_w / 2.0))
                     .top(px(top))
-                    .w(px(w - 2.0))
+                    .w(px(cap_w))
                     .h(px(cap))
                     .rounded(px(3.))
-                    .bg(rgb(RAISED))
+                    .bg(gpui::linear_gradient(
+                        180.0,
+                        gpui::linear_color_stop(rgb(0x41414b), 0.0),
+                        gpui::linear_color_stop(rgb(0x26262d), 1.0),
+                    ))
                     .border_1()
-                    .border_color(rgb(LINE_STRONG))
+                    .border_color(rgb(0x52525e))
+                    .shadow_md()
+                    .children([3.0, 11.0].map(|y| {
+                        div()
+                            .absolute()
+                            .left(px(4.))
+                            .right(px(4.))
+                            .top(px(y - 1.0))
+                            .h(px(1.))
+                            .bg(alpha(0xffffff, 0.09))
+                    }))
                     .child(
                         div()
                             .absolute()
-                            .left(px(3.))
+                            .left(px(2.))
+                            .right(px(2.))
                             .top(px(cap / 2.0 - 1.5))
-                            .w(px(w - 10.0))
                             .h(px(1.))
-                            .bg(rgb(TEXT_2)),
+                            .bg(rgb(if zero { MINT } else { TEXT })),
                     ),
             )
     }

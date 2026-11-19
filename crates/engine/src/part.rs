@@ -66,7 +66,9 @@ pub fn part(
     let tell = |k: usize, p: f32| {
         done[k].store(p.to_bits(), Ordering::Relaxed);
         let sum: f32 = (0..n)
-            .map(|j| f32::from_bits(done[j].load(Ordering::Relaxed)) * (spans[j].1 - spans[j].0) as f32)
+            .map(|j| {
+                f32::from_bits(done[j].load(Ordering::Relaxed)) * (spans[j].1 - spans[j].0) as f32
+            })
             .sum();
         let total: usize = spans.iter().map(|(a, b)| b - a).sum();
         progress(sum / total as f32);
@@ -92,7 +94,10 @@ pub fn part(
             })
             .collect();
         runs.into_iter()
-            .map(|h| h.join().unwrap_or_else(|_| Err("a separation thread panicked".into())))
+            .map(|h| {
+                h.join()
+                    .unwrap_or_else(|_| Err("a separation thread panicked".into()))
+            })
             .collect()
     });
     if let Some(e) = ran.into_iter().find_map(Result::err) {
@@ -101,7 +106,10 @@ pub fn part(
     }
     std::fs::create_dir_all(out).map_err(|e| format!("{}: {e}", out.display()))?;
     let given = &model.about.stems;
-    for name in keep.iter().filter(|k| given.iter().any(|g| g.eq_ignore_ascii_case(k))) {
+    for name in keep
+        .iter()
+        .filter(|k| given.iter().any(|g| g.eq_ignore_ascii_case(k)))
+    {
         let mut whole = [vec![0f32; len], vec![0f32; len]];
         for (k, &(from, _)) in spans.iter().enumerate() {
             let a = Audio::load(&work.join(k.to_string()).join(format!("{name}.wav")), rate)?;
@@ -115,7 +123,12 @@ pub fn part(
                 whole[1][at] += r * w;
             }
         }
-        write(&out.join(format!("{name}.wav")), &whole[0], &whole[1], rate as u32)?;
+        write(
+            &out.join(format!("{name}.wav")),
+            &whole[0],
+            &whole[1],
+            rate as u32,
+        )?;
     }
     let _ = std::fs::remove_dir_all(&work);
     Ok(())
@@ -128,7 +141,11 @@ pub fn weight(k: usize, n: usize, share: usize, fade: usize, at: usize) -> f32 {
     let half = fade as f64 / 2.0;
     let ramp = |edge: usize| ((at as f64 - edge as f64 + half) / fade as f64).clamp(0.0, 1.0);
     let rise = if k == 0 { 1.0 } else { ramp(k * share) };
-    let fall = if k + 1 == n { 1.0 } else { 1.0 - ramp((k + 1) * share) };
+    let fall = if k + 1 == n {
+        1.0
+    } else {
+        1.0 - ramp((k + 1) * share)
+    };
     (rise * fall) as f32
 }
 

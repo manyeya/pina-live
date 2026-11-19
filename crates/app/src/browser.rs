@@ -195,6 +195,20 @@ pub fn mixes_with(t: &Track, bpm: f64, key: &str) -> bool {
     tempo && (key.is_empty() || k.is_empty() || analyze::compatible(k, key))
 }
 
+/// A key's place on the Camelot wheel as a hue (its neighbours, the keys that mix with it,
+/// the hues next to it), the major (B) a shade lighter than the minor (A).
+fn key_hue(k: &str) -> Option<gpui::Hsla> {
+    let i = k.len().checked_sub(1)?;
+    let (n, l) = k.split_at(i);
+    let n: f32 = n.parse().ok().filter(|n| (1.0..=12.0).contains(n))?;
+    Some(gpui::hsla(
+        (n - 1.0) / 12.0,
+        0.62,
+        if l == "B" { 0.68 } else { 0.56 },
+        1.0,
+    ))
+}
+
 /// Keys round the wheel in order: 1A, 1B, 2A … 12B; no key last.
 fn camelot_order(k: &str) -> f64 {
     let Some((n, l)) = k.len().checked_sub(1).map(|i| k.split_at(i)) else {
@@ -642,7 +656,7 @@ impl Live {
             .child(head("TITLE", Sort::Title, None, false, cx))
             .child(head("ARTIST", Sort::Artist, Some(200.0), false, cx))
             .child(head("BPM", Sort::Bpm, Some(50.0), true, cx))
-            .child(head("KEY", Sort::Key, Some(34.0), true, cx))
+            .child(head("KEY", Sort::Key, Some(40.0), true, cx))
             .child(head("TIME", Sort::Time, Some(44.0), true, cx))
             .child(head("GENRE", Sort::Genre, Some(110.0), false, cx))
             .child(head("PLAYS", Sort::Plays, Some(40.0), true, cx))
@@ -843,11 +857,23 @@ impl Live {
                     .child(chip("Can't read", RECORD)),
                 _ => mono(String::new(), 50.0, TEXT_4),
             })
-            .child(mono(
-                t.camelot().to_string(),
-                34.0,
-                if fits { ACCENT_TEXT } else { TEXT_2 },
-            ))
+            .child(
+                div()
+                    .w(px(40.))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .gap(px(5.))
+                    .children(
+                        key_hue(t.camelot())
+                            .map(|c| div().size(px(6.)).flex_none().rounded(px(3.)).bg(c)),
+                    )
+                    .child(mono(
+                        t.camelot().to_string(),
+                        28.0,
+                        if fits { ACCENT_TEXT } else { TEXT_2 },
+                    )),
+            )
             .child(mono(
                 if t.seconds > 0.0 {
                     clock(t.seconds as f64, false)

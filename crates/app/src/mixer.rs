@@ -44,6 +44,24 @@ impl Live {
             self.meters[DECKS][s] = p.master[s].max(self.meters[DECKS][s] * FALL);
         }
         self.reduction = p.reduction.max(self.reduction * FALL);
+        // Peaks held a second and a half, then falling; a clip lit for three seconds.
+        for m in 0..=DECKS {
+            let new = if m < DECKS { p.levels[m] } else { p.master };
+            for s in 0..2 {
+                let h = &mut self.holds[m][s];
+                if new[s] >= h.0 {
+                    *h = (new[s], 45);
+                } else if h.1 > 0 {
+                    h.1 -= 1;
+                } else {
+                    h.0 *= FALL;
+                }
+            }
+            self.clips[m] = match new[0].max(new[1]) >= 0.999 {
+                true => 90,
+                false => self.clips[m].saturating_sub(1),
+            };
+        }
     }
 
     pub fn mixer_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -107,20 +125,57 @@ impl Live {
         let color = DECK_COLORS[ch];
         let w = if four { 82.0 } else { 104.0 };
         let ks = if compact { 22.0 } else { 28.0 };
+        // A knob's row: its name and what it reads (compact, what it reads while it's turned).
         let row = |label: &'static str, ctl: Ctl, lit: u32, cx: &mut Context<Self>| {
+            let turning = self.turning(ctl);
+            let v = self.ctl_value(ctl);
+            let mut said = crate::detail::value_text(self, ctl, v);
+            if compact {
+                said = said.trim_end_matches(" dB").to_string();
+            }
+            let (_, _, home) = ctl.range();
+            let moved = (v - home).abs() > 0.01;
+            let reads = div()
+                .h(px(10.))
+                .line_height(px(10.))
+                .font_family(MONO)
+                .text_size(px(8.5))
+                .whitespace_nowrap()
+                .text_color(rgb(match (said.as_str(), turning, moved) {
+                    ("KILL", ..) => RECORD,
+                    (_, true, _) => ACCENT_TEXT,
+                    (_, _, true) => TEXT_2,
+                    _ => TEXT_4,
+                }))
+                .child(said);
             div()
                 .w(px(w - 20.0))
                 .h(px(if compact { 24. } else { 30. }))
                 .flex()
                 .items_center()
                 .justify_between()
-                .child(
-                    div()
+                .child(match (compact, turning) {
+                    (true, true) => reads,
+                    (true, false) => div()
                         .text_size(px(9.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(rgb(TEXT_4))
                         .child(label),
-                )
+                    (false, _) => div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .child(
+                            div()
+                                .h(px(11.))
+                                .line_height(px(11.))
+                                .text_size(px(9.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(rgb(TEXT_4))
+                                .child(label),
+                        )
+                        .child(reads),
+                })
                 .child(self.knob(ctl, "", lit, ks, cx))
         };
         let eq = |b: usize| {
@@ -285,6 +340,8 @@ impl Live {
                     .child(self.fader(Ctl::Fader(ch), fh, 30.0, cx))
                     .child(meter_n(
                         self.meters[ch],
+                        self.holds[ch].map(|h| h.0),
+                        self.clips[ch] > 0,
                         fh - 2.0,
                         if compact { 12 } else { 16 },
                         3.0,
@@ -347,8 +404,12 @@ impl Live {
                     .flex()
                     .items_end()
                     .gap(px(5.))
+                    // What the limiter's taking off, down from the top: 0 to 12 dB.
+                    .child(gr_meter(self.reduction, mh, if compact { 16 } else { 24 }))
                     .child(meter_n(
                         self.meters[DECKS],
+                        self.holds[DECKS].map(|h| h.0),
+                        self.clips[DECKS] > 0,
                         mh,
                         if compact { 16 } else { 24 },
                         5.0,
@@ -442,6 +503,9 @@ impl Live {
                             live.press_ctl(Ctl::Xf, e, cx)
                         }),
                     )
+                    .on_scroll_wheel(cx.listener(|live, e: &gpui::ScrollWheelEvent, _, cx| {
+                        live.wheel_ctl(Ctl::Xf, e, cx)
+                    }))
                     .child(
                         div()
                             .absolute()
@@ -471,9 +535,23 @@ impl Live {
                             .w(px(cap))
                             .h(px(22.))
                             .rounded(px(3.))
-                            .bg(rgb(RAISED))
+                            .bg(gpui::linear_gradient(
+                                90.0,
+                                gpui::linear_color_stop(rgb(0x41414b), 0.0),
+                                gpui::linear_color_stop(rgb(0x26262d), 1.0),
+                            ))
                             .border_1()
-                            .border_color(rgb(LINE_STRONG))
+                            .border_color(rgb(0x52525e))
+                            .shadow_md()
+                            .children([4.0, 15.0].map(|x| {
+                                div()
+                                    .absolute()
+                                    .top(px(4.))
+                                    .bottom(px(4.))
+                                    .left(px(x))
+                                    .w(px(1.))
+                                    .bg(alpha(0xffffff, 0.09))
+                            }))
                             .child(
                                 div()
                                     .absolute()
@@ -490,17 +568,56 @@ impl Live {
     }
 }
 
-/// A stereo meter `h` tall with `segs` segments, each side `w` wide.
-pub fn meter_n(level: [f32; 2], h: f32, segs: usize, w: f32) -> impl IntoElement {
+/// The limiter's gain reduction, `h` tall in `segs` segments, lit amber down from the top: a
+/// segment for each half-decibel to 12 dB.
+pub fn gr_meter(db: f32, h: f32, segs: usize) -> impl IntoElement {
     canvas(
         |_, _, _| {},
         move |b, _, window, _| {
             let (x0, y0) = (f32::from(b.origin.x), f32::from(b.origin.y));
             let gap = 1.0;
             let sh = (h - gap * (segs - 1) as f32) / segs as f32;
+            let lit = (db / 12.0 * segs as f32).ceil() as usize;
+            for k in 0..segs {
+                window.paint_quad(gpui::fill(
+                    gpui::Bounds::new(
+                        gpui::point(gpui::px(x0), gpui::px(y0 + k as f32 * (sh + gap))),
+                        gpui::size(gpui::px(3.), gpui::px(sh)),
+                    ),
+                    match k < lit {
+                        true => gpui::Hsla::from(rgb(AMBER)),
+                        false => alpha(RAISED, 0.5),
+                    },
+                ));
+            }
+        },
+    )
+    .w(px(3.))
+    .h(px(h))
+    .flex_none()
+}
+
+/// A stereo meter `h` tall with `segs` segments, each side `w` wide: lit to its level, its held
+/// peak a lit segment over it, its top segment red while it's clipped.
+pub fn meter_n(
+    level: [f32; 2],
+    hold: [f32; 2],
+    clip: bool,
+    h: f32,
+    segs: usize,
+    w: f32,
+) -> impl IntoElement {
+    canvas(
+        |_, _, _| {},
+        move |b, _, window, _| {
+            let (x0, y0) = (f32::from(b.origin.x), f32::from(b.origin.y));
+            let gap = 1.0;
+            let sh = (h - gap * (segs - 1) as f32) / segs as f32;
+            let seg_of =
+                |v: f32| ((20.0 * v.max(1e-6).log10() + 48.0) / 51.0 * segs as f32).ceil() as i32;
             for (side, &v) in level.iter().enumerate() {
-                let db = 20.0 * v.max(1e-6).log10();
-                let lit = ((db + 48.0) / 51.0 * segs as f32).ceil() as i32;
+                let lit = seg_of(v);
+                let held = seg_of(hold[side]) - 1;
                 for k in 0..segs {
                     let seg_db = -48.0 + (k as f32 + 1.0) * 51.0 / segs as f32;
                     let color = if seg_db > -3.0 {
@@ -516,7 +633,9 @@ pub fn meter_n(level: [f32; 2], h: f32, segs: usize, w: f32) -> impl IntoElement
                             gpui::point(gpui::px(x0 + side as f32 * (w + 1.0)), gpui::px(y)),
                             gpui::size(gpui::px(w), gpui::px(sh)),
                         ),
-                        if (k as i32) < lit {
+                        if clip && k + 1 == segs {
+                            gpui::Hsla::from(rgb(RECORD))
+                        } else if (k as i32) < lit || (k as i32 == held && held > 0) {
                             gpui::Hsla::from(rgb(color))
                         } else {
                             alpha(RAISED, 0.8)

@@ -5,6 +5,7 @@ mod browser;
 mod controls;
 mod crates;
 mod decks;
+mod detail;
 mod fxbar;
 mod keys;
 mod layout;

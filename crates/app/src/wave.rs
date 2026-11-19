@@ -370,9 +370,10 @@ fn paint_scrolling(v: &View, b: Bounds<Pixels>, window: &mut Window, cx: &mut Ap
             if !(x0..x0 + w).contains(&x) {
                 continue;
             }
-            let bar = k.rem_euclid(g.per_bar.max(1) as i64) == 0;
+            let per = g.per_bar.max(1) as i64;
+            let bar = k.rem_euclid(per) == 0;
             if bar {
-                let phrase = k.rem_euclid(g.per_bar.max(1) as i64 * 16) == 0;
+                let phrase = k.rem_euclid(per * 16) == 0;
                 quad(
                     window,
                     x,
@@ -381,6 +382,22 @@ fn paint_scrolling(v: &View, b: Bounds<Pixels>, window: &mut Window, cx: &mut Ap
                     h,
                     alpha(TEXT, if phrase { 0.5 } else { 0.24 }),
                 );
+                // Its number at the top, every bar when they're far enough apart (else each
+                // fourth), as the counter under the deck counts them.
+                let bar_px = p * per as f64 / per_px;
+                let every = if bar_px > 36.0 { 1 } else { 4 };
+                let n = k.div_euclid(per) + 1;
+                if bar_px * every as f64 > 36.0 && (n - 1).rem_euclid(every) == 0 && n > 0 {
+                    text(
+                        window,
+                        cx,
+                        &n.to_string(),
+                        x + 3.0,
+                        y0 + 1.0,
+                        8.5,
+                        if phrase { TEXT_2 } else { TEXT_4 },
+                    );
+                }
             } else if beats {
                 quad(window, x, y0, 1.0, 5.0, alpha(TEXT, 0.4));
                 quad(window, x, y0 + h - 5.0, 1.0, 5.0, alpha(TEXT, 0.4));
@@ -498,6 +515,25 @@ fn paint_overview(v: &View, b: Bounds<Pixels>, window: &mut Window, cx: &mut App
             3.0,
             rgb(phrase_color(&p.name)),
         );
+    }
+    // A tick each half-minute along the top (a minute's longer), and the last thirty seconds
+    // warmed red: where to have the next one ready.
+    let mut t = 30.0;
+    while t < v.len {
+        let minute = (t / 60.0).fract() < 1e-6;
+        quad(
+            window,
+            x_of(t),
+            y0,
+            1.0,
+            if minute { 5.0 } else { 3.0 },
+            rgb(if minute { TEXT_3 } else { LINE_STRONG }),
+        );
+        t += 30.0;
+    }
+    if v.len > 60.0 {
+        let a = x_of(v.len - 30.0);
+        quad(window, a, y0, x0 + w - a, h - strip, alpha(RECORD, 0.08));
     }
     quad(window, x_of(v.cue), y0, 1.0, h - strip, rgb(AMBER));
     for (k, at) in v.hot.iter().enumerate() {

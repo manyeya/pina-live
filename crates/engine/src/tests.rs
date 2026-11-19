@@ -615,4 +615,3 @@ fn pieces_add_to_one() {
     assert_eq!(weight(0, n, share, fade, 10), 1.0);
     assert_eq!(weight(1, n, share, fade, 10), 0.0);
 }
-

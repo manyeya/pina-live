@@ -268,6 +268,10 @@ pub struct Live {
     pub rec_note: Option<String>,
     /// Each channel's meter and the master's (last), as drawn: falling back between peaks.
     pub meters: [[f32; 2]; DECKS + 1],
+    /// Each meter's peak held (its level, and frames left before it falls), and frames left of
+    /// its clip light.
+    pub holds: [[(f32, u16); 2]; DECKS + 1],
+    pub clips: [u16; DECKS + 1],
     /// The master limiter's reduction, dB, as drawn.
     pub reduction: f32,
     /// When the status last came in, to move the waveforms on smoothly between.
@@ -522,6 +526,8 @@ impl Live {
             recording: None,
             rec_note: None,
             meters: [[0.0; 2]; DECKS + 1],
+            holds: [[(0.0, 0); 2]; DECKS + 1],
+            clips: [0; DECKS + 1],
             reduction: 0.0,
             status_at: Instant::now(),
             focus: cx.focus_handle(),

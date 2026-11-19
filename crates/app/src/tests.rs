@@ -45,8 +45,15 @@ fn test_home() -> PathBuf {
         let _ = std::fs::remove_dir_all(&d);
         // Three of the models Pina knows, their files' sizes the wrong way round to their
         // speeds (Kim Vocal 2's the quickest, its file here the biggest).
-        for (id, bytes) in [("bs-roformer-sw", 6), ("htdemucs-drums", 1), ("kim-vocal-2", 10)] {
-            let k = pina_engine::separate::catalog::KNOWN.iter().find(|k| k.id == id).unwrap();
+        for (id, bytes) in [
+            ("bs-roformer-sw", 6),
+            ("htdemucs-drums", 1),
+            ("kim-vocal-2", 10),
+        ] {
+            let k = pina_engine::separate::catalog::KNOWN
+                .iter()
+                .find(|k| k.id == id)
+                .unwrap();
             let model = d.join("models").join(id);
             std::fs::create_dir_all(&model).unwrap();
             std::fs::write(model.join("model.json"), k.json).unwrap();
@@ -125,6 +132,32 @@ fn dragging_a_track_onto_a_deck_loads_it(cx: &mut gpui::TestAppContext) {
             assert_eq!(c.get(live), c.range().2, "{c:?} back home");
         }
         assert!(!live.fx[0].on[1], "off FX 1");
+    });
+}
+
+/// The pitch fader dragged near 0 lands on it (its centre detent); with Shift it doesn't.
+#[gpui::test]
+fn the_pitch_fader_snaps_to_zero_unless_shift_is_held(cx: &mut gpui::TestAppContext) {
+    test_home();
+    let rate = 48_000.0;
+    let (e, remote) = engine(rate);
+    let (live, cx) = cx.add_window_view(|window, cx| {
+        Live::new(rate, remote, Some(e), Library::default(), window, cx)
+    });
+    let to = |live: &mut Live, fine: bool, cx: &mut gpui::Context<Live>| {
+        // From +0.3 of its reach, dragged up to a hair past 0.
+        live.drag = Some(crate::controls::Drag::Ctl {
+            ctl: Ctl::Tempo(0),
+            from: (0.0, 0.0),
+            value: 0.3,
+        });
+        let up = if fine { -330.0 } else { -33.0 };
+        live.drag_to(gpui::point(px(0.), px(up)), fine, cx);
+        Ctl::Tempo(0).get(live)
+    };
+    live.update(cx, |live, cx| {
+        assert_eq!(to(live, false, cx), 0.0, "snapped to 0");
+        assert!(to(live, true, cx).abs() > 0.001, "Shift passes the detent by");
     });
 }
 

@@ -312,20 +312,41 @@ impl Live {
             .child(crate::probe::mark(&self.probes, format!("fx{u}.end")))
     }
 
-    /// A small knob with its caption beside it, for the FX bar.
+    /// A small knob with its caption beside it and what it's at under that, for the FX bar
+    /// (compact, no caption: what it's at shows while it's turned).
     fn knob_row(&self, ctl: Ctl, caption: &'static str, cx: &mut Context<Self>) -> Div {
+        let turning = self.turning(ctl);
+        let reads = crate::detail::value_text(self, ctl, self.ctl_value(ctl));
         div()
             .flex()
             .items_center()
             .gap(px(6.))
             .child(self.knob(ctl, "", ACCENT, 26.0, cx))
-            .child(
-                div()
-                    .text_size(px(9.5))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(TEXT_3))
-                    .child(caption),
-            )
+            .when(!caption.is_empty() || turning, |d| {
+                d.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(1.))
+                        .when(!caption.is_empty(), |d| {
+                            d.child(
+                                div()
+                                    .text_size(px(9.5))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(rgb(TEXT_3))
+                                    .child(caption),
+                            )
+                        })
+                        .child(
+                            div()
+                                .w(px(30.))
+                                .font_family(MONO)
+                                .text_size(px(9.))
+                                .text_color(rgb(if turning { ACCENT_TEXT } else { TEXT_4 }))
+                                .child(reads),
+                        ),
+                )
+            })
     }
 }
 
