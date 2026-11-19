@@ -18,7 +18,43 @@ use crate::{
     ui::{scale::px, text::TextInput, theme::*},
 };
 
-pub const ROW_H: f32 = 26.0;
+pub const ROW_H: f32 = 27.0;
+
+/// A track being dragged out of the library: what it is, drawn under the pointer.
+#[derive(Clone)]
+pub struct TrackDrag {
+    pub id: u64,
+    pub title: String,
+    pub detail: String,
+}
+
+impl gpui::Render for TrackDrag {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .px(px(10.))
+            .py(px(7.))
+            .rounded(px(8.))
+            .bg(alpha(FIELD, 0.96))
+            .border_1()
+            .border_color(rgb(LINE_STRONG))
+            .shadow_lg()
+            .font_family(SANS)
+            .text_size(px(12.))
+            .text_color(rgb(TEXT))
+            .child(icon(Icon::Wave, 14.).text_color(rgb(TEXT_3)))
+            .child(self.title.clone())
+            .child(
+                div()
+                    .font_family(MONO)
+                    .text_size(px(11.))
+                    .text_color(rgb(TEXT_3))
+                    .child(self.detail.clone()),
+            )
+    }
+}
 const SIDE_W: f32 = 196.0;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -52,6 +88,13 @@ pub struct Browser {
     pub rows: Vec<usize>,
     pub selected: Option<u64>,
     pub list: UniformListScrollHandle,
+    /// Only what mixes with the leading deck: its tempo near (or half or double), its key's.
+    pub matching: bool,
+    /// What matching matched against last: the tempo and the key.
+    pub near: Option<(f64, String)>,
+    /// Something to say over the list for a moment (a preview with no headphones set up).
+    pub note: Option<String>,
+    pub heads_at: std::rc::Rc<std::cell::Cell<gpui::Bounds<gpui::Pixels>>>,
 }
 
 impl Browser {
@@ -65,6 +108,10 @@ impl Browser {
             rows: Vec::new(),
             selected: None,
             list: UniformListScrollHandle::new(),
+            matching: false,
+            near: None,
+            note: None,
+            heads_at: Default::default(),
         }
     }
 
@@ -105,6 +152,11 @@ impl Browser {
             Source::All => (0..lib.tracks.len()).collect(),
         };
         rows.retain(|&i| lib.tracks[i].matches(&q));
+        if self.matching
+            && let Some((bpm, key)) = &self.near
+        {
+            rows.retain(|&i| mixes_with(&lib.tracks[i], *bpm, key));
+        }
         // The history keeps its order (latest first); everything else sorts.
         if self.source != Source::History {
             let t = &lib.tracks;
@@ -132,6 +184,18 @@ impl Browser {
     }
 }
 
+/// Whether a track mixes with what's leading: its tempo within 6% (or at half or double), and its
+/// key on the wheel next to the leader's (when both are known).
+pub fn mixes_with(t: &Track, bpm: f64, key: &str) -> bool {
+    let tempo = t.bpm().is_some_and(|b| {
+        [0.5, 1.0, 2.0]
+            .iter()
+            .any(|m| ((b * m) / bpm - 1.0).abs() < 0.06)
+    });
+    let k = t.camelot();
+    tempo && (key.is_empty() || k.is_empty() || analyze::compatible(k, key))
+}
+
 /// Keys round the wheel in order: 1A, 1B, 2A … 12B; no key last.
 fn camelot_order(k: &str) -> f64 {
     let Some((n, l)) = k.len().checked_sub(1).map(|i| k.split_at(i)) else {
@@ -149,8 +213,19 @@ impl Live {
     ) -> impl IntoElement {
         // Typing searches as it goes.
         let typed = self.browser.search.read(cx).text().to_string();
-        if typed != self.browser.text {
+        let near = self.leader().and_then(|l| {
+            let s = self.status().decks[l];
+            (s.bpm > 0.0).then(|| {
+                let key = self.decks[l]
+                    .analysis
+                    .as_ref()
+                    .map_or(String::new(), |a| a.camelot.clone());
+                ((s.bpm * 10.0).round() / 10.0, key)
+            })
+        });
+        if typed != self.browser.text || (self.browser.matching && near != self.browser.near) {
             self.browser.text = typed;
+            self.browser.near = near;
             self.browser.refresh(&self.lib);
         }
         let _ = window;
@@ -390,6 +465,7 @@ impl Live {
                             .child(self.browser.search.clone()),
                     ),
             )
+            .child(self.match_chip(cx))
             .child(
                 div()
                     .font_family(MONO)
@@ -397,13 +473,54 @@ impl Live {
                     .text_color(rgb(TEXT_3))
                     .child(format!("{n} track{}", if n == 1 { "" } else { "s" })),
             )
+            .when_some(self.browser.note.clone(), |d, note| {
+                d.child(div().text_size(px(11.)).text_color(rgb(AMBER)).child(note))
+            })
             .child(div().flex_1())
             .when(analysing, |d| d.child(self.analysis_progress(cx)))
             .child(
                 div()
                     .text_size(px(11.))
                     .text_color(rgb(TEXT_4))
-                    .child("Q P play · A L cue · Z , sync · 1–4 7–0 hot cues · ⇧← ⇧→ load"),
+                    .child("Drag a track onto a deck · double-click loads the free one"),
+            )
+    }
+
+    /// Match: only what mixes with the leading deck, said against what.
+    fn match_chip(&self, cx: &mut Context<Self>) -> Div {
+        let on = self.browser.matching;
+        let label = match self.leader() {
+            Some(l) => format!("Match {}", crate::live::DECK_NAMES[l]),
+            None => "Match".into(),
+        };
+        div()
+            .h(px(26.))
+            .px(px(9.))
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .rounded(px(6.))
+            .border_1()
+            .cursor_pointer()
+            .font_weight(FontWeight::MEDIUM)
+            .border_color(if on {
+                alpha(ACCENT, 0.45)
+            } else {
+                rgb(LINE).into()
+            })
+            .when(on, |d| d.bg(alpha(ACCENT, 0.12)))
+            .text_color(rgb(if on { ACCENT_TEXT } else { TEXT_3 }))
+            .hover(|s| s.text_color(rgb(TEXT_2)))
+            .child(icon(Icon::Pulse, 13.).text_color(rgb(if on { ACCENT_TEXT } else { TEXT_3 })))
+            .child(label)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|live, _, _, cx| {
+                    live.browser.matching = !live.browser.matching;
+                    live.browser.near = None;
+                    live.browser.refresh(&live.lib);
+                    cx.notify();
+                }),
             )
     }
 
@@ -476,17 +593,26 @@ impl Live {
                         }),
                     )
             };
+        let at = self.browser.heads_at.clone();
         div()
             .h(px(26.))
             .flex_none()
+            .relative()
             .flex()
             .items_center()
             .gap(px(12.))
             .px(px(12.))
             .text_size(px(10.5))
+            // Where the heads are, for the rows under them (tests find a row by it).
+            .child(
+                gpui::canvas(move |b, _, _| at.set(b), |_, _, _, _| {})
+                    .absolute()
+                    .size_full(),
+            )
             .font_weight(FontWeight::SEMIBOLD)
             .border_b_1()
             .border_color(rgb(LINE_SOFT))
+            .child(div().w(px(20.)).flex_none())
             .child(div().w(px(30.)).flex_none())
             .child(head("TITLE", Sort::Title, None, false, cx))
             .child(head("ARTIST", Sort::Artist, Some(200.0), false, cx))
@@ -576,8 +702,19 @@ impl Live {
                 .child(s)
         };
         let shown = self.shown();
+        let previewing = self.preview.as_ref().is_some_and(|(p, _)| *p == id);
+        let drag = TrackDrag {
+            id,
+            title: t.tags.title.clone(),
+            detail: match (t.bpm(), t.camelot()) {
+                (Some(b), k) if !k.is_empty() => format!("{b:.1} · {k}"),
+                (Some(b), _) => format!("{b:.1}"),
+                _ => String::new(),
+            },
+        };
         div()
             .id(("row", k))
+            .on_drag(drag, |d, _, _, cx| cx.new(|_| d.clone()))
             .w_full()
             .h(px(ROW_H))
             .flex()
@@ -606,6 +743,30 @@ impl Live {
                     cx.notify();
                 }),
             )
+            // Heard in the headphones: from its first drop (or a quarter in).
+            .child(
+                div()
+                    .size(px(20.))
+                    .flex_none()
+                    .rounded(px(10.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .when(previewing, |d| d.bg(alpha(ACCENT, 0.2)))
+                    .hover(|s| s.bg(rgb(RAISED)))
+                    .child(
+                        icon(if previewing { Icon::Pause } else { Icon::Play }, 11.)
+                            .text_color(rgb(if previewing { ACCENT_TEXT } else { TEXT_4 })),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |live, _, _, cx| {
+                            cx.stop_propagation();
+                            live.toggle_preview(id, cx);
+                        }),
+                    ),
+            )
             .child(div().w(px(30.)).flex_none().flex().gap(px(2.)).children(
                 on_decks.into_iter().map(|d| {
                     div()
@@ -628,7 +789,13 @@ impl Live {
                     .whitespace_nowrap()
                     .overflow_hidden()
                     .text_ellipsis()
-                    .text_color(rgb(if played { TEXT_3 } else { TEXT }))
+                    .text_color(rgb(if previewing {
+                        ACCENT_TEXT
+                    } else if played {
+                        TEXT_3
+                    } else {
+                        TEXT
+                    }))
                     .child(t.tags.title.clone()),
             )
             .child(
@@ -644,7 +811,11 @@ impl Live {
             .child(match (t.bpm(), pending, &t.error) {
                 (Some(b), _, _) => mono(format!("{b:.1}"), 50.0, TEXT_2),
                 (None, true, _) => mono("···".into(), 50.0, TEXT_4),
-                (None, _, Some(_)) => mono("can't read".into(), 50.0, RECORD),
+                (None, _, Some(_)) => div()
+                    .w(px(50.))
+                    .flex_none()
+                    .flex()
+                    .child(chip("Can't read", RECORD)),
                 _ => mono(String::new(), 50.0, TEXT_4),
             })
             .child(mono(

@@ -287,6 +287,8 @@ pub struct Played {
 #[serde(default)]
 pub struct Library {
     pub folders: Vec<PathBuf>,
+    /// Files in the folders that aren't music (a video with no sound): left out of every scan.
+    pub ignored: Vec<PathBuf>,
     pub tracks: Vec<Track>,
     pub crates: Vec<Crate>,
     pub history: Vec<Played>,
@@ -340,6 +342,8 @@ impl Library {
         for dir in self.folders.clone() {
             walk(&dir, &mut found);
         }
+        let ignored: HashSet<&PathBuf> = self.ignored.iter().collect();
+        found.retain(|p| !ignored.contains(p));
         let mut new = Vec::new();
         for path in found {
             let id = id_of(&path);
@@ -365,6 +369,17 @@ impl Library {
             self.tracks.push(Track::new(path));
         }
         id
+    }
+
+    /// A track that isn't music taken out, and left out of every scan after.
+    pub fn ignore(&mut self, id: u64) {
+        if let Some(i) = self.tracks.iter().position(|t| t.id == id) {
+            let t = self.tracks.remove(i);
+            self.ignored.push(t.path);
+            for c in &mut self.crates {
+                c.tracks.retain(|x| *x != id);
+            }
+        }
     }
 
     pub fn played(&mut self, id: u64, deck: u8) {
@@ -493,6 +508,11 @@ mod tests {
         let mut lib = Library::default();
         assert_eq!(lib.add_folder(&dir).len(), 3);
         assert_eq!(lib.scan().len(), 0);
+        // One that turns out not to be music stays out.
+        let a = lib.tracks.iter().find(|t| t.title() == "a").unwrap().id;
+        lib.ignore(a);
+        assert_eq!(lib.scan().len(), 0);
+        assert!(lib.get(a).is_none());
         let song = lib.tracks.iter().find(|t| t.title() == "Song").unwrap();
         assert_eq!(song.tags.artist, "Artist");
         let numbered = lib.tracks.iter().find(|t| t.title() == "Track").unwrap();

@@ -7,6 +7,100 @@ use pina_live_engine::{deck::DeckCmd, engine::engine, library::Library, mixer::M
 
 use crate::live::Live;
 
+/// A WAV of a tone, 16-bit stereo, for the tests' own library.
+fn write_wav(path: &std::path::Path, seconds: f32) {
+    let rate = 48_000u32;
+    let n = (seconds * rate as f32) as u32;
+    let mut b = Vec::new();
+    let data = n * 4;
+    b.extend(b"RIFF");
+    b.extend((36 + data).to_le_bytes());
+    b.extend(b"WAVEfmt ");
+    b.extend(16u32.to_le_bytes());
+    b.extend(1u16.to_le_bytes());
+    b.extend(2u16.to_le_bytes());
+    b.extend(rate.to_le_bytes());
+    b.extend((rate * 4).to_le_bytes());
+    b.extend(4u16.to_le_bytes());
+    b.extend(16u16.to_le_bytes());
+    b.extend(b"data");
+    b.extend(data.to_le_bytes());
+    for i in 0..n {
+        let v = ((i as f32 * 0.05).sin() * 8000.0) as i16;
+        b.extend(v.to_le_bytes());
+        b.extend(v.to_le_bytes());
+    }
+    std::fs::write(path, b).unwrap();
+}
+
+/// The tests' own data folder, never the person's: one for the run.
+fn test_home() -> PathBuf {
+    static DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| {
+        let d = std::env::temp_dir().join(format!("pina-live-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        // SAFETY: set once, before any test thread reads it.
+        unsafe { std::env::set_var("PINA_LIVE_HOME", &d) };
+        d
+    })
+    .clone()
+}
+
+/// A track dragged out of the library and let go over deck B's card loads on B (and the card
+/// says so while it's over it); let go over nothing, nothing loads.
+#[gpui::test]
+fn dragging_a_track_onto_a_deck_loads_it(cx: &mut gpui::TestAppContext) {
+    let home = test_home();
+    let (a, b) = (home.join("First.wav"), home.join("Second.wav"));
+    write_wav(&a, 3.0);
+    write_wav(&b, 3.0);
+    let mut lib = Library::default();
+    let first = lib.add_file(&a);
+    lib.add_file(&b);
+    cx.update(|cx| {
+        crate::ui::text::bind_keys(cx);
+        crate::live::bind_keys(cx);
+    });
+    let rate = 48_000.0;
+    let (e, remote) = engine(rate);
+    let (live, cx) =
+        cx.add_window_view(|window, cx| Live::new(rate, remote, Some(e), lib, window, cx));
+    cx.run_until_parked();
+    let (row, deck_b) = live.read_with(cx, |live, _| {
+        let heads = live.browser.heads_at.get();
+        // The rows are in the library's newest-first order: First is the second one down.
+        let k = live
+            .browser
+            .rows
+            .iter()
+            .position(|&i| live.lib.tracks[i].id == first)
+            .unwrap();
+        let row = gpui::point(
+            heads.origin.x + px(320.),
+            heads.origin.y + heads.size.height + px(crate::browser::ROW_H * (k as f32 + 0.5)),
+        );
+        (row, live.decks[1].overview_at.get().center())
+    });
+    cx.simulate_mouse_down(row, gpui::MouseButton::Left, gpui::Modifiers::none());
+    cx.simulate_mouse_move(
+        row + gpui::point(px(30.), px(-20.)),
+        gpui::MouseButton::Left,
+        gpui::Modifiers::none(),
+    );
+    cx.simulate_mouse_move(deck_b, gpui::MouseButton::Left, gpui::Modifiers::none());
+    cx.run_until_parked();
+    let over = live.read_with(cx, |live, _| live.drop_on.clone());
+    assert_eq!(over.map(|o| o.0), Some(1), "deck B says it'll take it");
+    cx.simulate_mouse_up(deck_b, gpui::MouseButton::Left, gpui::Modifiers::none());
+    cx.run_until_parked();
+    live.read_with(cx, |live, _| {
+        assert_eq!(live.decks[1].track, Some(first));
+        assert_eq!(live.decks[0].track, None);
+        assert!(live.drop_on.is_none());
+    });
+}
+
 /// `PINA_LIVE_SHOT=<dir> PINA_LIVE_SHOT_TRACKS="<file>|<file>" cargo test -p pina-live shots --
 /// --ignored`: the window with those tracks on decks A and B (A playing, looping, cued up),
 /// drawn to `<dir>/<PINA_LIVE_SHOT_PAGE or "decks">.png`. Its library and waveforms are kept
@@ -165,6 +259,10 @@ fn shots() {
                     on: true,
                 });
                 live.show_settings = page == "settings";
+                if page == "drop" {
+                    live.drop_on = Some((1, "Climax (LIVE cover by Leroy)".into()));
+                    live.keep_drop = true;
+                }
                 if page == "crates" {
                     let ids: Vec<u64> = live.lib.tracks.iter().map(|t| t.id).collect();
                     live.lib.crates.push(pina_live_engine::library::Crate {
@@ -196,4 +294,24 @@ fn shots() {
     image.save(&file).unwrap();
     println!("{}", file.display());
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// FX 1 starts on deck A and FX 2 on B; switching one on while it's on no deck puts it on the
+/// leading deck (A with none leading), so On always does something.
+#[gpui::test]
+fn fx_are_on_a_deck_when_switched_on(cx: &mut gpui::TestAppContext) {
+    test_home();
+    let rate = 48_000.0;
+    let (e, remote) = engine(rate);
+    let (live, cx) = cx.add_window_view(|window, cx| {
+        Live::new(rate, remote, Some(e), Library::default(), window, cx)
+    });
+    cx.run_until_parked();
+    live.update(cx, |live, cx| {
+        assert!(live.fx[0].on[0] && live.fx[1].on[1]);
+        live.toggle_send(1, 1, cx);
+        assert!(!live.fx[1].on.iter().any(|x| *x));
+        live.toggle_fx(1, cx);
+        assert!(live.fx[1].settings.on && live.fx[1].on[0]);
+    });
 }

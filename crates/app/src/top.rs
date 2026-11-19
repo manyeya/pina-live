@@ -13,7 +13,7 @@ impl Live {
         let lead = self.leader().filter(|&l| self.status().decks[l].bpm > 0.0);
         let quantize = self.quantize;
         div()
-            .h(px(40.))
+            .h(px(44.))
             .flex_none()
             .flex()
             .items_center()

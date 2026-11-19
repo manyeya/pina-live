@@ -43,6 +43,8 @@ pub enum Command {
     Leader(Option<usize>),
     /// The master, frame by frame (left, right), into this as it's made; None stops.
     Record(Option<Producer<f32>>),
+    /// A track heard in the headphones only, from a frame (a library's preview); None stops it.
+    Preview(Option<(Arc<Audio>, f64)>),
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -60,6 +62,9 @@ pub struct Status {
     pub frames: u64,
     /// Frames a recording lost (its writer fell behind): should stay 0.
     pub dropped: u64,
+    /// Where the preview is (frames) and how long it is; NaN with none.
+    pub preview: f64,
+    pub preview_len: f64,
 }
 
 pub struct Engine {
@@ -80,6 +85,8 @@ pub struct Engine {
     recorder: Option<Producer<f32>>,
     /// Frames the recording couldn't take (its writer fell behind).
     dropped: u64,
+    /// The preview playing in the headphones: its audio, where it is, its fade in.
+    preview: Option<(Arc<Audio>, f64, f32)>,
 }
 
 /// The UI's end.
@@ -175,6 +182,7 @@ pub fn engine(rate: f64) -> (Engine, Remote) {
         frames: 0,
         recorder: None,
         dropped: 0,
+        preview: None,
     };
     let remote = Remote {
         commands: cp,
@@ -216,6 +224,7 @@ impl Engine {
         let clock = self.clock();
         self.mixer
             .process(&mut self.bufs, &mut self.fx, clock, ml, mr, pl, pr);
+        self.play_preview(pl, pr);
         if let Some(rec) = &mut self.recorder {
             match rec.write_chunk_uninit(2 * n) {
                 Ok(chunk) => {
@@ -249,6 +258,12 @@ impl Engine {
                 Command::Record(r) => {
                     self.recorder = r;
                     self.dropped = 0;
+                }
+                Command::Preview(p) => {
+                    if let Some((old, ..)) = self.preview.take() {
+                        let _ = self.trash.push(Trash::Audio(old));
+                    }
+                    self.preview = p.map(|(a, at)| (a, at, 0.0));
                 }
             }
         }
@@ -331,6 +346,26 @@ impl Engine {
         let _ = n;
     }
 
+    /// The preview, into the headphones only, at their level; faded in so it doesn't click.
+    fn play_preview(&mut self, pl: &mut [f32], pr: &mut [f32]) {
+        let Some((audio, pos, fade)) = &mut self.preview else {
+            return;
+        };
+        let g = self.mixer.phones_level();
+        for k in 0..pl.len() {
+            *fade = (*fade + 1.0 / 480.0).min(1.0);
+            let (a, b) = audio.at(*pos as isize);
+            pl[k] += a * g * *fade;
+            pr[k] += b * g * *fade;
+            *pos += 1.0;
+        }
+        if *pos >= audio.len() as f64 {
+            if let Some((old, ..)) = self.preview.take() {
+                let _ = self.trash.push(Trash::Audio(old));
+            }
+        }
+    }
+
     fn fx_command(&mut self, c: FxCmd) {
         match c {
             FxCmd::Settings { unit, settings } if unit < UNITS => self.fx[unit].settings = settings,
@@ -373,6 +408,8 @@ impl Engine {
             phones: self.mixer.phones_peak,
             reduction: self.mixer.reduction,
             dropped: self.dropped,
+            preview: self.preview.as_ref().map_or(f64::NAN, |p| p.1),
+            preview_len: self.preview.as_ref().map_or(0.0, |p| p.0.len() as f64),
             ..Status::default()
         };
         for (i, d) in self.decks.iter().enumerate() {

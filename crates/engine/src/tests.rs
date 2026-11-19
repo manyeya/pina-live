@@ -527,3 +527,69 @@ fn stems_take_parts_out() {
         }
     }
 }
+
+/// FX through the whole engine: an echo on deck A's channel, switched on, is heard after the
+/// sound stops; not assigned to the channel, nothing changes.
+#[test]
+fn fx_through_the_engine() {
+    use crate::fx::{FxCmd, FxKind, FxSettings};
+    let burst: Vec<f32> = (0..(RATE as usize * 4))
+        .map(|i| {
+            if i < (RATE * 0.3) as usize {
+                (i as f32 * 0.05).sin() * 0.5
+            } else {
+                0.0
+            }
+        })
+        .collect();
+    let audio = Arc::new(Audio::new(burst.clone(), burst));
+    let tail = |assigned: bool, on: bool| {
+        let (mut e, mut r) = engine(RATE);
+        load(&mut r, 0, audio.clone(), Some(Grid::new(120.0, 0.0)));
+        r.send(Command::Fx(FxCmd::Settings {
+            unit: 0,
+            settings: FxSettings {
+                kind: FxKind::Echo,
+                on,
+                beats: 0.5,
+                level: 0.8,
+                param: 0.6,
+            },
+        }));
+        r.send(Command::Fx(FxCmd::Assign {
+            unit: 0,
+            ch: 0,
+            on: assigned,
+        }));
+        r.deck(0, DeckCmd::Play);
+        let out = run(&mut e, &mut r, 2.0);
+        rms(&out[(0.6 * RATE) as usize..])
+    };
+    let dry = tail(false, true);
+    let wet = tail(true, true);
+    let off = tail(true, false);
+    assert!(
+        dry < 1e-4 && off < 1e-4,
+        "no echo unless on and assigned: {dry} {off}"
+    );
+    assert!(wet > 0.01, "echo heard after the burst: {wet}");
+}
+
+/// A preview plays in the headphones and not the master, and stops at its end.
+#[test]
+fn preview_in_the_headphones_only() {
+    let (mut e, mut r) = engine(RATE);
+    r.send(Command::Preview(Some((tone(440.0, 1.0), 0.0))));
+    let n = (0.5 * RATE) as usize;
+    let (mut ml, mut mr, mut pl, mut pr) = (vec![0.0; n], vec![0.0; n], vec![0.0; n], vec![0.0; n]);
+    e.process(&mut ml, &mut mr, &mut pl, &mut pr);
+    r.poll();
+    assert!(rms(&ml) < 1e-6);
+    assert!(rms(&pl[n / 2..]) > 0.3);
+    assert!((r.last.preview - n as f64).abs() < 1.0);
+    for _ in 0..3 {
+        e.process(&mut ml, &mut mr, &mut pl, &mut pr);
+    }
+    r.poll();
+    assert!(r.last.preview.is_nan());
+}

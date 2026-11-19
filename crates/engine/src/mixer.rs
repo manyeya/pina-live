@@ -155,6 +155,11 @@ impl Mixer {
         }
     }
 
+    /// The headphones' level, as a gain.
+    pub(crate) fn phones_level(&self) -> f32 {
+        self.phones
+    }
+
     pub(crate) fn command(&mut self, cmd: MixCmd) {
         let db = |d: f32| 10f32.powf(d / 20.0);
         let n = self.chans.len();

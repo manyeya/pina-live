@@ -1,7 +1,7 @@
-//! The mixer between the decks, laid out as a club mixer: a row a control (trim, the three
-//! bands, the filter) across the channels with its name in the middle, then cue, the channel
-//! faders with their meters, which side of the crossfader each is on, and the crossfader; the
-//! master, the cue mix and the headphones' level on the right with the master's meter.
+//! The mixer between the decks: a strip a channel (its deck and crossfader side, trim, the three
+//! bands with their kills, the filter, its FX sends, cue, and its fader by its meter on a dB
+//! scale), the master's card between them (level, meter, the limiter at work, the cue mix and the
+//! headphones' level), and the crossfader under them.
 
 use gpui::{Context, Div, FontWeight, MouseButton, MouseDownEvent, canvas, div, prelude::*, rgb};
 use pina_live_engine::{
@@ -11,7 +11,7 @@ use pina_live_engine::{
 
 use crate::{
     controls::Ctl,
-    decks::{PANEL_H, PANEL_H_FOUR},
+    decks::{PANEL_H, PANEL_H_FOUR, caption},
     live::{DECK_COLORS, DECK_NAMES, Live},
     ui::{scale::px, theme::*},
 };
@@ -44,209 +44,333 @@ impl Live {
 
     pub fn mixer_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let order = self.channel_order();
-        let h = if self.narrow { PANEL_H_FOUR } else { PANEL_H };
+        let compact = self.narrow;
+        let h = if compact { PANEL_H_FOUR } else { PANEL_H };
         let half = order.len() / 2;
-        let knob_size = if self.narrow { 24.0 } else { 28.0 };
-        let row = |label: &'static str,
-                   ctl: &dyn Fn(usize) -> Ctl,
-                   color: u32,
-                   cx: &mut Context<Self>| {
-            let mut r = div().flex().items_center().justify_between();
-            for (k, &ch) in order.iter().enumerate() {
-                if k == half {
-                    r = r.child(
-                        div()
-                            .w(px(40.))
-                            .text_center()
-                            .text_size(px(9.5))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(TEXT_4))
-                            .child(label),
-                    );
-                }
-                r = r.child(
-                    div()
-                        .w(px(knob_size + 12.0))
-                        .flex()
-                        .justify_center()
-                        .child(self.knob(ctl(ch), "", color, knob_size, cx)),
-                );
+        let mut strips = div().flex().items_start().justify_center().gap(px(8.));
+        for (k, &ch) in order.iter().enumerate() {
+            if k == half {
+                strips = strips.child(self.master_card(cx));
             }
-            r
-        };
+            strips = strips.child(self.strip(ch, cx));
+        }
         div()
-            .w(px(if self.four { 380. } else { 300. }))
             .h(px(h))
             .flex_none()
             .flex()
-            .bg(rgb(STRIP))
-            .border_r_1()
-            .border_color(rgb(LINE))
-            .child(
-                div()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .px(px(8.))
-                    .pt(px(6.))
-                    .gap(px(2.))
-                    .child(self.channel_heads(&order, half, cx))
-                    .child(row("TRIM", &Ctl::Trim, TEXT_2, cx))
-                    .child(row("HI", &|c| Ctl::Eq(c, 2), TEXT_2, cx))
-                    .child(row("MID", &|c| Ctl::Eq(c, 1), TEXT_2, cx))
-                    .child(row("LOW", &|c| Ctl::Eq(c, 0), TEXT_2, cx))
-                    .child(row("FILTER", &Ctl::Filter, ACCENT, cx))
-                    .child(self.cue_row(&order, half, cx))
-                    .child(self.fader_row(&order, half, cx))
-                    .child(self.crossfader(cx)),
-            )
-            .child(self.master_column(cx))
+            .flex_col()
+            .gap(px(8.))
+            .child(strips)
+            .child(self.crossfader(cx))
     }
 
-    fn channel_heads(&self, order: &[usize], half: usize, cx: &mut Context<Self>) -> Div {
-        let mut r = div().flex().items_center().justify_between().h(px(20.));
-        for (k, &ch) in order.iter().enumerate() {
-            if k == half {
-                r = r.child(div().w(px(40.)));
-            }
-            let side = self.mix.side[ch];
-            r = r.child(
-                div().w(px(40.)).flex().justify_center().child(
+    /// A channel: its deck and crossfader side, trim and the three bands and the filter, its FX
+    /// sends, cue, and its fader by its meter on a dB scale.
+    fn strip(&self, ch: usize, cx: &mut Context<Self>) -> Div {
+        let compact = self.narrow;
+        let four = self.four;
+        let color = DECK_COLORS[ch];
+        let w = if four { 82.0 } else { 104.0 };
+        let ks = if compact { 22.0 } else { 28.0 };
+        let row = |label: &'static str, ctl: Ctl, lit: u32, cx: &mut Context<Self>| {
+            div()
+                .w(px(w - 20.0))
+                .h(px(if compact { 24. } else { 30. }))
+                .flex()
+                .items_center()
+                .justify_between()
+                .child(
                     div()
-                        .px(px(6.))
-                        .h(px(18.))
-                        .flex()
-                        .items_center()
-                        .gap(px(4.))
-                        .rounded(px(4.))
-                        .cursor_pointer()
-                        .hover(|s| s.bg(rgb(RAISED)))
-                        .text_size(px(10.5))
-                        .font_weight(FontWeight::BOLD)
-                        .child(div().text_color(rgb(DECK_COLORS[ch])).child(DECK_NAMES[ch]))
-                        // Which side of the crossfader: clicked round A, thru, B.
-                        .child(
-                            div()
-                                .font_family(MONO)
-                                .text_size(px(9.))
-                                .text_color(rgb(TEXT_3))
-                                .child(match side {
-                                    Side::A => "◀",
-                                    Side::Thru => "·",
-                                    Side::B => "▶",
-                                }),
-                        )
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(move |live, _, _, cx| {
-                                let next = match live.mix.side[ch] {
-                                    Side::A => Side::Thru,
-                                    Side::Thru => Side::B,
-                                    Side::B => Side::A,
-                                };
-                                live.mix.side[ch] = next;
-                                live.mixer(MixCmd::Side { ch, side: next });
-                                cx.notify();
-                            }),
-                        ),
-                ),
-            );
-        }
-        r
-    }
-
-    fn cue_row(&self, order: &[usize], half: usize, cx: &mut Context<Self>) -> Div {
-        let mut r = div().flex().items_center().justify_between().h(px(28.));
-        for (k, &ch) in order.iter().enumerate() {
-            if k == half {
-                r = r.child(
-                    div()
-                        .w(px(40.))
-                        .text_center()
-                        .text_size(px(9.5))
+                        .text_size(px(9.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(rgb(TEXT_4))
-                        .child("CUE"),
-                );
+                        .child(label),
+                )
+                .child(self.knob(ctl, "", lit, ks, cx))
+        };
+        let eq = |b: usize| {
+            if self.mix.eq[ch][b] < 0.01 {
+                RECORD
+            } else {
+                TEXT_2
             }
-            let on = self.mix.cue[ch];
-            r = r.child(
-                div().w(px(40.)).flex().justify_center().child(
-                    div()
-                        .w(px(34.))
-                        .h(px(22.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(5.))
-                        .cursor_pointer()
-                        .border_1()
-                        .border_color(rgb(if on { AMBER } else { LINE }))
-                        .bg(rgb(if on { AMBER } else { CARD }))
-                        .child(icon(Icon::Headphones, 13.).text_color(rgb(if on {
-                            0x0c0c0f
-                        } else {
-                            TEXT_3
-                        })))
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(move |live, _, _, cx| {
-                                if live.arm(crate::midi::Target::Pfl(ch), cx) {
-                                    return;
-                                }
-                                let on = !live.mix.cue[ch];
-                                live.mix.cue[ch] = on;
-                                live.mixer(MixCmd::Cue { ch, on });
-                                cx.notify();
+        };
+        let side = self.mix.side[ch];
+        let cue = self.mix.cue[ch];
+        let fh = if compact { 64.0 } else { 100.0 };
+        let gain = pina_live_engine::mixer::fader_gain(self.mix.fader[ch], 0.6);
+        let db = 20.0 * gain.max(1e-6).log10();
+        let send = |u: usize, cx: &mut Context<Self>| {
+            let on = self.fx[u].on[ch];
+            let ringing = on && self.fx[u].settings.on;
+            div()
+                .h(px(20.))
+                .px(px(5.))
+                .flex()
+                .items_center()
+                .rounded(px(4.))
+                .text_size(px(10.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .cursor_pointer()
+                .when(ringing, |d| d.bg(rgb(ACCENT)).text_color(rgb(0xffffff)))
+                .when(on && !ringing, |d| {
+                    d.border_1()
+                        .border_color(rgb(ACCENT))
+                        .text_color(rgb(ACCENT_TEXT))
+                })
+                .when(!on, |d| {
+                    d.border_1()
+                        .border_color(rgb(LINE))
+                        .text_color(rgb(TEXT_4))
+                        .hover(|s| s.text_color(rgb(TEXT_2)))
+                })
+                .child(format!("FX{}", u + 1))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |live, _, _, cx| {
+                        cx.stop_propagation();
+                        live.toggle_send(u, ch, cx);
+                    }),
+                )
+        };
+        div()
+            .w(px(w))
+            .flex_none()
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap(px(if compact { 3. } else { 5. }))
+            .py(px(8.))
+            .rounded(px(8.))
+            .bg(rgb(STRIP))
+            .border_1()
+            .border_color(rgb(LINE))
+            // The deck, and which side of the crossfader it's on (clicked round).
+            .child(
+                div()
+                    .h(px(20.))
+                    .px(px(6.))
+                    .flex()
+                    .items_center()
+                    .gap(px(5.))
+                    .rounded(px(4.))
+                    .bg(alpha(color, 0.16))
+                    .cursor_pointer()
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(rgb(color))
+                            .child(DECK_NAMES[ch]),
+                    )
+                    // Its side of the crossfader: ◀ left, ▶ right, or thru (not on it).
+                    .child(
+                        div()
+                            .font_family(MONO)
+                            .text_size(px(9.))
+                            .text_color(rgb(TEXT_3))
+                            .child(match side {
+                                Side::A => "◀",
+                                Side::Thru => "thru",
+                                Side::B => "▶",
                             }),
-                        ),
-                ),
-            );
-        }
-        r
+                    )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |live, _, _, cx| {
+                            let next = match live.mix.side[ch] {
+                                Side::A => Side::Thru,
+                                Side::Thru => Side::B,
+                                Side::B => Side::A,
+                            };
+                            live.mix.side[ch] = next;
+                            live.mixer(MixCmd::Side { ch, side: next });
+                            cx.notify();
+                        }),
+                    ),
+            )
+            .child(row("TRIM", Ctl::Trim(ch), TEXT_2, cx))
+            .child(row("HIGH", Ctl::Eq(ch, 2), eq(2), cx))
+            .child(row("MID", Ctl::Eq(ch, 1), eq(1), cx))
+            .child(row("LOW", Ctl::Eq(ch, 0), eq(0), cx))
+            .child(row("FILTER", Ctl::Filter(ch), ACCENT, cx))
+            .child(
+                div()
+                    .flex()
+                    .gap(px(4.))
+                    .child(send(0, cx))
+                    .child(send(1, cx)),
+            )
+            .child(
+                div()
+                    .h(px(if compact { 22. } else { 24. }))
+                    .w(px(w - 30.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(5.))
+                    .rounded(px(5.))
+                    .cursor_pointer()
+                    .text_size(px(11.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .when(cue, |d| d.bg(rgb(AMBER)).text_color(rgb(0x0c0c0f)))
+                    .when(!cue, |d| {
+                        d.border_1()
+                            .border_color(rgb(LINE))
+                            .text_color(rgb(TEXT_3))
+                            .hover(|s| s.text_color(rgb(TEXT_2)))
+                    })
+                    .child(icon(Icon::Headphones, 12.).text_color(rgb(if cue {
+                        0x0c0c0f
+                    } else {
+                        TEXT_3
+                    })))
+                    .child("Cue")
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |live, _, _, cx| {
+                            if live.arm(crate::midi::Target::Pfl(ch), cx) {
+                                return;
+                            }
+                            let on = !live.mix.cue[ch];
+                            live.mix.cue[ch] = on;
+                            live.mixer(MixCmd::Cue { ch, on });
+                            cx.notify();
+                        }),
+                    ),
+            )
+            .child(
+                div()
+                    .pt(px(2.))
+                    .flex()
+                    .items_end()
+                    .gap(px(5.))
+                    .child(self.fader(Ctl::Fader(ch), fh, 30.0, cx))
+                    .child(meter_n(
+                        self.meters[ch],
+                        fh - 2.0,
+                        if compact { 12 } else { 16 },
+                        3.0,
+                    ))
+                    .when(!four, |d| {
+                        d.child(
+                            div()
+                                .h(px(fh - 2.0))
+                                .flex()
+                                .flex_col()
+                                .justify_between()
+                                .font_family(MONO)
+                                .text_size(px(8.))
+                                .text_color(rgb(TEXT_4))
+                                .child("0")
+                                .child("−12")
+                                .child("−24")
+                                .child("−∞"),
+                        )
+                    }),
+            )
+            .child(
+                div()
+                    .font_family(MONO)
+                    .text_size(px(10.))
+                    .text_color(rgb(TEXT_3))
+                    .child(match db < -60.0 {
+                        true => "−∞ dB".to_string(),
+                        false => format!("{} dB", db_text(db)),
+                    }),
+            )
     }
 
-    fn fader_row(&self, order: &[usize], half: usize, cx: &mut Context<Self>) -> Div {
-        let fh = if self.narrow { 64.0 } else { 82.0 };
-        let mut r = div().flex().items_end().justify_between().pt(px(4.));
-        for (k, &ch) in order.iter().enumerate() {
-            if k == half {
-                r = r.child(div().w(px(40.)));
-            }
-            r = r.child(
+    /// The master: its level and meter, the limiter at work, the headphones' cue mix and level.
+    fn master_card(&self, cx: &mut Context<Self>) -> Div {
+        let compact = self.narrow;
+        let limiting = self.reduction > 0.5;
+        let mh = if compact { 100.0 } else { 150.0 };
+        div()
+            .w(px(if self.four { 96. } else { 112. }))
+            .flex_none()
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap(px(if compact { 6. } else { 10. }))
+            .py(px(10.))
+            .rounded(px(8.))
+            .bg(rgb(STRIP))
+            .border_1()
+            .border_color(rgb(LINE))
+            .child(caption("MASTER"))
+            .child(self.knob(Ctl::Master, "", TEXT, if compact { 32. } else { 40. }, cx))
+            .child(
                 div()
-                    .w(px(40.))
                     .flex()
-                    .justify_center()
-                    .gap(px(3.))
-                    .child(meter(self.meters[ch], fh))
-                    .child(self.fader(Ctl::Fader(ch), fh, 22.0, cx)),
-            );
-        }
-        r
+                    .items_end()
+                    .gap(px(5.))
+                    .child(meter_n(
+                        self.meters[DECKS],
+                        mh,
+                        if compact { 16 } else { 24 },
+                        5.0,
+                    ))
+                    .child(
+                        div()
+                            .h(px(mh))
+                            .flex()
+                            .flex_col()
+                            .justify_between()
+                            .font_family(MONO)
+                            .text_size(px(8.))
+                            .text_color(rgb(TEXT_4))
+                            .child("+3")
+                            .child("0")
+                            .child("−12")
+                            .child("−24")
+                            .child("−48"),
+                    ),
+            )
+            .child(
+                div()
+                    .font_family(MONO)
+                    .text_size(px(9.5))
+                    .text_color(rgb(if limiting { AMBER } else { TEXT_4 }))
+                    .child(match limiting {
+                        true => format!("Limiting −{:.1}", self.reduction),
+                        false => "Limiter".into(),
+                    }),
+            )
+            .child(
+                div()
+                    .flex()
+                    .gap(px(10.))
+                    .child(self.knob(Ctl::CueMix, "CUE MIX", AMBER, 26.0, cx))
+                    .child(self.knob(Ctl::Phones, "PHONES", AMBER, 26.0, cx)),
+            )
     }
 
     fn crossfader(&self, cx: &mut Context<Self>) -> Div {
         let v = (self.mix.xf + 1.0) / 2.0;
-        let (w, cap) = (150.0, 18.0);
+        let (w, cap) = (240.0, 20.0);
         div()
+            .h(px(40.))
             .flex()
             .items_center()
             .justify_center()
-            .gap(px(8.))
-            .pt(px(8.))
+            .gap(px(10.))
+            .rounded(px(8.))
+            .bg(rgb(STRIP))
+            .border_1()
+            .border_color(rgb(LINE))
             .child(
                 div()
                     .text_size(px(10.))
                     .font_weight(FontWeight::BOLD)
-                    .text_color(rgb(TEXT_3))
+                    .text_color(rgb(DECK_COLORS[0]))
                     .child("A"),
             )
             .child(
                 div()
                     .relative()
                     .w(px(w))
-                    .h(px(22.))
+                    .h(px(28.))
                     .cursor(gpui::CursorStyle::ResizeLeftRight)
                     .on_mouse_down(
                         MouseButton::Left,
@@ -259,7 +383,7 @@ impl Live {
                         div()
                             .absolute()
                             .left(px(cap / 2.0))
-                            .top(px(9.))
+                            .top(px(12.))
                             .w(px(w - cap))
                             .h(px(4.))
                             .rounded(px(2.))
@@ -267,22 +391,22 @@ impl Live {
                             .border_1()
                             .border_color(rgb(LINE)),
                     )
-                    .child(
+                    .children((0..=8).map(|k| {
                         div()
                             .absolute()
-                            .left(px(w / 2.0))
-                            .top(px(5.))
+                            .top(px(2.))
+                            .left(px(cap / 2.0 + k as f32 * (w - cap) / 8.0))
                             .w(px(1.))
-                            .h(px(12.))
-                            .bg(rgb(LINE_STRONG)),
-                    )
+                            .h(px(if k % 4 == 0 { 7. } else { 4. }))
+                            .bg(rgb(LINE_STRONG))
+                    }))
                     .child(
                         div()
                             .absolute()
                             .left(px(v * (w - cap)))
-                            .top(px(2.))
+                            .top(px(3.))
                             .w(px(cap))
-                            .h(px(18.))
+                            .h(px(22.))
                             .rounded(px(3.))
                             .bg(rgb(RAISED))
                             .border_1()
@@ -291,10 +415,10 @@ impl Live {
                                 div()
                                     .absolute()
                                     .left(px(cap / 2.0 - 0.5))
-                                    .top(px(3.))
+                                    .top(px(4.))
                                     .w(px(1.))
-                                    .h(px(10.))
-                                    .bg(rgb(TEXT_2)),
+                                    .h(px(12.))
+                                    .bg(rgb(TEXT)),
                             ),
                     ),
             )
@@ -302,54 +426,18 @@ impl Live {
                 div()
                     .text_size(px(10.))
                     .font_weight(FontWeight::BOLD)
-                    .text_color(rgb(TEXT_3))
+                    .text_color(rgb(DECK_COLORS[1]))
                     .child("B"),
-            )
-    }
-
-    fn master_column(&self, cx: &mut Context<Self>) -> Div {
-        let limiting = self.reduction > 0.5;
-        div()
-            .w(px(78.))
-            .flex_none()
-            .flex()
-            .flex_col()
-            .items_center()
-            .gap(px(8.))
-            .pt(px(8.))
-            .border_l_1()
-            .border_color(rgb(LINE_SOFT))
-            .child(self.knob(Ctl::Master, "MASTER", TEXT, 34.0, cx))
-            .child(self.knob(Ctl::CueMix, "CUE MIX", AMBER, 28.0, cx))
-            .child(self.knob(Ctl::Phones, "PHONES", AMBER, 28.0, cx))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .gap(px(3.))
-                    .child(meter(self.meters[DECKS], 70.0))
-                    .child(
-                        div()
-                            .font_family(MONO)
-                            .text_size(px(9.))
-                            .text_color(rgb(if limiting { AMBER } else { TEXT_4 }))
-                            .child(match limiting {
-                                true => format!("−{:.1} dB", self.reduction),
-                                false => "LIMIT".into(),
-                            }),
-                    ),
             )
     }
 }
 
-/// A stereo meter `h` tall: -48 to +3 dB, green to amber at -12, red from -3.
-pub fn meter(level: [f32; 2], h: f32) -> impl IntoElement {
+/// A stereo meter `h` tall with `segs` segments, each side `w` wide.
+pub fn meter_n(level: [f32; 2], h: f32, segs: usize, w: f32) -> impl IntoElement {
     canvas(
         |_, _, _| {},
         move |b, _, window, _| {
             let (x0, y0) = (f32::from(b.origin.x), f32::from(b.origin.y));
-            let segs = 20;
             let gap = 1.0;
             let sh = (h - gap * (segs - 1) as f32) / segs as f32;
             for (side, &v) in level.iter().enumerate() {
@@ -365,13 +453,12 @@ pub fn meter(level: [f32; 2], h: f32) -> impl IntoElement {
                         METER_LOW
                     };
                     let y = y0 + h - (k + 1) as f32 * (sh + gap) + gap;
-                    let on = (k as i32) < lit;
                     window.paint_quad(gpui::fill(
                         gpui::Bounds::new(
-                            gpui::point(gpui::px(x0 + side as f32 * 4.0), gpui::px(y)),
-                            gpui::size(gpui::px(3.), gpui::px(sh)),
+                            gpui::point(gpui::px(x0 + side as f32 * (w + 1.0)), gpui::px(y)),
+                            gpui::size(gpui::px(w), gpui::px(sh)),
                         ),
-                        if on {
+                        if (k as i32) < lit {
                             gpui::Hsla::from(rgb(color))
                         } else {
                             alpha(RAISED, 0.8)
@@ -381,7 +468,7 @@ pub fn meter(level: [f32; 2], h: f32) -> impl IntoElement {
             }
         },
     )
-    .w(px(7.))
+    .w(px(w * 2.0 + 1.0))
     .h(px(h))
     .flex_none()
 }

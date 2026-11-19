@@ -193,6 +193,12 @@ pub struct Live {
     pub four: bool,
     /// The deck whose beat grid is being set by hand.
     pub grid_edit: Option<usize>,
+    /// The deck a track's being dragged over, and what the track is.
+    pub drop_on: Option<(usize, String)>,
+    /// Shots: the drop's look held without a drag (one can't be started headless).
+    pub keep_drop: bool,
+    /// The track heard in the headphones from the library, and since when.
+    pub preview: Option<(u64, Instant)>,
     /// A right-click menu open, and where; a crate being renamed, and its field.
     pub menu: Option<(crate::crates::Menu, gpui::Point<Pixels>)>,
     pub renaming: Option<(usize, gpui::Entity<crate::ui::text::TextInput>)>,
@@ -202,8 +208,9 @@ pub struct Live {
     pub wave_h: f32,
     pub mix: MixUi,
     pub fx: [crate::fxbar::FxUi; pina_live_engine::fx::UNITS],
-    /// The FX unit whose effect menu is open.
+    /// The FX unit whose effect menu is open, and the deck whose pad-mode menu is (four decks).
     pub fx_menu: Option<usize>,
+    pub pad_menu: Option<usize>,
     pub quantize: bool,
     /// Seconds across the waveforms.
     pub zoom: f32,
@@ -251,7 +258,19 @@ impl Live {
                 (None, Some(e), Some(format!("No sound: {err}")))
             }
         };
-        let mut live = Live::new(rate, remote, offline, Library::load(), window, cx);
+        let mut lib = Library::load();
+        // Files found earlier with no sound in them (video clips) leave the library for good.
+        let silent: Vec<u64> = lib
+            .tracks
+            .iter()
+            .filter(|t| t.error.as_deref().is_some_and(|e| e.contains("no audio")))
+            .map(|t| t.id)
+            .collect();
+        for id in &silent {
+            lib.ignore(*id);
+        }
+        let mut live = Live::new(rate, remote, offline, lib, window, cx);
+        live.lib_dirty = !silent.is_empty();
         live.output = output;
         live.audio_note = note;
         let fresh: Vec<u64> = live.lib.scan();
@@ -388,10 +407,7 @@ impl Live {
                         self.mix.cue[ch] = on;
                         self.mixer(MixCmd::Cue { ch, on });
                     }
-                    (Target::FxOn(u), _) if press => {
-                        self.fx[u].settings.on = !self.fx[u].settings.on;
-                        self.send_fx(u);
-                    }
+                    (Target::FxOn(u), _) if press => self.toggle_fx(u, cx),
                     (Target::FxAssign(u, ch), _) if press => {
                         let on = !self.fx[u].on[ch];
                         self.fx[u].on[ch] = on;
@@ -435,11 +451,15 @@ impl Live {
             grid_edit: None,
             menu: None,
             renaming: None,
+            drop_on: None,
+            keep_drop: false,
+            preview: None,
             narrow: false,
             wave_h: 88.0,
             mix: MixUi::default(),
             fx: Default::default(),
             fx_menu: None,
+            pad_menu: None,
             quantize: true,
             zoom: 10.0,
             lib,
@@ -474,6 +494,15 @@ impl Live {
                 .deck(ch, DeckCmd::Keylock(live.decks[ch].keylock));
         }
         live.remote.mix(MixCmd::CueMix(live.mix.cue_mix));
+        // FX 1 on A and FX 2 on B from the start: switched on, they're heard.
+        for (u, ch) in [(0, 0), (1, 1)] {
+            live.fx[u].on[ch] = true;
+            live.remote.fx(pina_live_engine::fx::FxCmd::Assign {
+                unit: u,
+                ch,
+                on: true,
+            });
+        }
         live.remote
             .mix(MixCmd::CrossfaderCurve(live.settings.xf_curve));
         live.mix.auto_gain = live.settings.auto_gain;
@@ -539,6 +568,14 @@ impl Live {
         }
         for (id, found) in self.analyzer.poll() {
             self.analysed(id, found);
+            changed = true;
+        }
+        // A preview that's reached its end (well after it started reading) is done.
+        if let Some((_, at)) = self.preview
+            && at.elapsed() > Duration::from_secs(3)
+            && self.remote.last.preview.is_nan()
+        {
+            self.preview = None;
             changed = true;
         }
         // Sync moves the tempo: the pitch fader shown (and taken over) where it's put it.
@@ -729,6 +766,8 @@ impl Live {
                     }
                 }
             }
+            // A file with no sound (a video clip in the folder) isn't music: it's left out.
+            Err(e) if e.contains("no audio") => self.lib.ignore(id),
             Err(e) => t.error = Some(e),
         }
         self.lib_dirty = true;
@@ -938,6 +977,68 @@ impl Live {
         self.browser.refresh(&self.lib);
     }
 
+    /// A drag over deck `i`'s card: inside it, the card says it'll load there.
+    pub fn drag_over(&mut self, i: usize, inside: bool, what: String, cx: &mut Context<Self>) {
+        let was = self.drop_on.clone();
+        match inside {
+            true => self.drop_on = Some((i, what)),
+            false if self.drop_on.as_ref().is_some_and(|(d, _)| *d == i) => self.drop_on = None,
+            false => {}
+        }
+        if was != self.drop_on {
+            cx.notify();
+        }
+    }
+
+    /// A track heard in the headphones from its first drop (else a quarter in), or the one
+    /// that's playing stopped.
+    pub fn toggle_preview(&mut self, id: u64, cx: &mut Context<Self>) {
+        if self.preview.as_ref().is_some_and(|(p, _)| *p == id) {
+            self.preview = None;
+            self.remote.send(Command::Preview(None));
+            cx.notify();
+            return;
+        }
+        let Some(t) = self.lib.get(id) else { return };
+        self.browser.note = match self.settings.audio.phones {
+            pina_live_engine::output::Phones::None => {
+                Some("Previews play in the headphones: set them up in Settings".into())
+            }
+            _ => None,
+        };
+        let start = t.analysis.as_ref().map_or(0.25 * t.seconds as f64, |a| {
+            a.phrases
+                .iter()
+                .find(|p| {
+                    let n = p.name.to_lowercase();
+                    n.starts_with("drop") || n.starts_with("chorus") || n.starts_with("hook")
+                })
+                .map_or(0.25 * a.seconds as f64, |p| p.start as f64)
+        });
+        let (path, rate) = (t.path.clone(), self.rate);
+        self.preview = Some((id, Instant::now()));
+        let read = cx.background_spawn(async move { Audio::load(&path, rate) });
+        cx.spawn(async move |this, cx| {
+            let audio = read.await;
+            this.update(cx, |live, cx| {
+                // Another one picked, or stopped, meanwhile.
+                if live.preview.as_ref().is_some_and(|(p, _)| *p == id) {
+                    match audio {
+                        Ok(a) => {
+                            live.remote
+                                .send(Command::Preview(Some((Arc::new(a), start * rate))));
+                        }
+                        Err(_) => live.preview = None,
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
     /// The library to be saved on the next tick that saves.
     pub fn mark_dirty(&mut self) {
         self.lib_dirty = true;
@@ -1005,23 +1106,27 @@ impl Render for Live {
         {
             window.request_animation_frame();
         }
+        if self.drop_on.is_some() && !cx.has_active_drag() && !self.keep_drop {
+            self.drop_on = None;
+        }
         let shown = self.shown();
         let view = window.viewport_size();
         let (w, h) = (f32::from(view.width), f32::from(view.height));
         self.narrow = self.four || w < 1300.0;
         // What's left for the waveforms once the bars, decks and a usable library are in.
-        let panel = if self.narrow {
-            crate::decks::PANEL_H_FOUR
-        } else {
-            crate::decks::PANEL_H
-        };
+        let panel = 2.0 * crate::decks::GAP
+            + if self.narrow {
+                crate::decks::PANEL_H_FOUR
+            } else {
+                crate::decks::PANEL_H
+            };
         let spare = h
-            - 40.0
+            - 44.0
             - panel
             - crate::fxbar::FX_BAR_H
-            - 230.0
+            - 190.0
             - if self.learning { 34.0 } else { 0.0 };
-        self.wave_h = (spare / shown as f32).clamp(40.0, if shown > 2 { 56.0 } else { 88.0 });
+        self.wave_h = (spare / shown as f32).clamp(40.0, if shown > 2 { 56.0 } else { 76.0 });
         div()
             .id("live")
             .relative()
@@ -1065,8 +1170,8 @@ impl Render for Live {
                 div()
                     .flex()
                     .flex_none()
-                    .border_t_1()
-                    .border_color(rgb(LINE))
+                    .gap(px(crate::decks::GAP))
+                    .p(px(crate::decks::GAP))
                     .when(self.four, |d| d.child(self.deck_panel(2, cx)))
                     .child(self.deck_panel(0, cx))
                     .child(self.mixer_panel(cx))

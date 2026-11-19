@@ -9,12 +9,12 @@ use pina_live_engine::{
 
 use crate::{
     controls::Ctl,
-    decks::beats_text,
+    decks::{beats_text, caption},
     live::{DECK_COLORS, DECK_NAMES, Live},
     ui::{scale::px, theme::*},
 };
 
-pub const FX_BAR_H: f32 = 46.0;
+pub const FX_BAR_H: f32 = 56.0;
 pub const FX_BEATS: [f64; 11] = [
     1.0 / 16.0,
     0.125,
@@ -42,6 +42,32 @@ impl Live {
         self.remote.fx(FxCmd::Settings { unit, settings });
     }
 
+    /// A unit on or off; switched on while it's on no deck, it goes on the leading one (else A),
+    /// so On always does something.
+    pub fn toggle_fx(&mut self, u: usize, cx: &mut Context<Self>) {
+        let on = !self.fx[u].settings.on;
+        self.fx[u].settings.on = on;
+        if on && !self.fx[u].on.iter().any(|x| *x) {
+            let deck = self.leader().unwrap_or(0);
+            self.fx[u].on[deck] = true;
+            self.remote.fx(FxCmd::Assign {
+                unit: u,
+                ch: deck,
+                on: true,
+            });
+        }
+        self.send_fx(u);
+        cx.notify();
+    }
+
+    /// A unit's send on a channel, on or off (from the FX bar or the channel's strip).
+    pub fn toggle_send(&mut self, u: usize, ch: usize, cx: &mut Context<Self>) {
+        let on = !self.fx[u].on[ch];
+        self.fx[u].on[ch] = on;
+        self.remote.fx(FxCmd::Assign { unit: u, ch, on });
+        cx.notify();
+    }
+
     /// Another effect for a unit: its memory made here, its time and knob where it likes them.
     pub fn set_fx_kind(&mut self, unit: usize, kind: FxKind) {
         let inserts = (0..DECKS)
@@ -62,6 +88,7 @@ impl Live {
             .flex()
             .items_center()
             .border_t_1()
+            .border_b_1()
             .border_color(rgb(LINE))
             .bg(rgb(SURFACE))
             .children((0..UNITS).map(|u| self.fx_unit(u, cx)))
@@ -71,24 +98,9 @@ impl Live {
         let f = self.fx[u];
         let s = f.settings;
         let open = self.fx_menu == Some(u);
-        let step = |by: isize, label: &'static str, cx: &mut Context<Self>| {
-            seg(label, false, 24.0).px(px(6.)).on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |live, _, _, cx| {
-                    let b = live.fx[u].settings.beats;
-                    let k = FX_BEATS
-                        .iter()
-                        .position(|&x| (x - b).abs() < 1e-9)
-                        .unwrap_or(5) as isize;
-                    let next = (k + by).clamp(0, FX_BEATS.len() as isize - 1) as usize;
-                    live.fx[u].settings.beats = FX_BEATS[next];
-                    live.send_fx(u);
-                    cx.notify();
-                }),
-            )
-        };
+        let compact = self.narrow;
         let menu = div()
-            .w(px(180.))
+            .w(px(200.))
             .p(px(4.))
             .rounded(px(8.))
             .bg(rgb(CARD))
@@ -102,13 +114,14 @@ impl Live {
             .children(FxKind::ALL.into_iter().map(|kind| {
                 let picked = kind == s.kind;
                 div()
-                    .h(px(24.))
-                    .px(px(8.))
+                    .h(px(26.))
+                    .px(px(9.))
                     .flex()
                     .items_center()
                     .justify_between()
                     .rounded(px(5.))
                     .cursor_pointer()
+                    .bg(rgb(if picked { RAISED } else { CARD }))
                     .text_color(rgb(if picked { TEXT } else { TEXT_2 }))
                     .hover(|st| st.bg(rgb(RAISED)))
                     .child(kind.name())
@@ -117,7 +130,7 @@ impl Live {
                             div()
                                 .text_size(px(9.5))
                                 .text_color(rgb(TEXT_4))
-                                .child("trails"),
+                                .child("rings out"),
                         )
                     })
                     .on_mouse_down(
@@ -130,38 +143,80 @@ impl Live {
                         }),
                     )
             }));
+        // Its length in beats, a chip each (the ones either end of the list by ◀ ▶ when narrow).
+        let chips: &[f64] = match compact {
+            true => &[0.25, 0.5, 1.0, 2.0, 4.0],
+            false => &[0.25, 0.5, 0.75, 1.0, 2.0, 4.0, 8.0],
+        };
+        let beats = tray().children(chips.iter().map(|&b| {
+            let on = (s.beats - b).abs() < 1e-9;
+            div()
+                .min_w(px(27.))
+                .h(px(22.))
+                .px(px(3.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(5.))
+                .cursor_pointer()
+                .font_family(MONO)
+                .text_size(px(11.))
+                .bg(rgb(if on { RAISED } else { BG }))
+                .text_color(rgb(if on { TEXT } else { TEXT_3 }))
+                .when(!on, |d| d.hover(|st| st.text_color(rgb(TEXT_2))))
+                .child(beats_text_fx(b))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |live, _, _, cx| {
+                        live.fx[u].settings.beats = b;
+                        live.send_fx(u);
+                        cx.notify();
+                    }),
+                )
+        }));
+        let on_any = f.on.iter().any(|x| *x);
         div()
             .flex_1()
+            .min_w(px(0.))
             .h_full()
             .flex()
             .items_center()
-            .gap(px(10.))
+            .gap(px(8.))
             .px(px(12.))
+            .overflow_hidden()
             .when(u > 0, |d| d.border_l_1().border_color(rgb(LINE)))
+            .child(caption(if u == 0 { "FX 1" } else { "FX 2" }))
             .child(
                 div()
-                    .text_size(px(10.))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(rgb(TEXT_4))
-                    .child(format!("FX {}", u + 1)),
-            )
-            .child(
-                seg("On", s.on, 26.0)
+                    .h(px(30.))
+                    .px(px(11.))
+                    .flex()
+                    .items_center()
+                    .gap(px(7.))
+                    .rounded(px(7.))
+                    .cursor_pointer()
+                    .font_weight(FontWeight::SEMIBOLD)
                     .when(s.on, |d| d.bg(rgb(ACCENT)).text_color(rgb(0xffffff)))
+                    .when(!s.on, |d| {
+                        d.bg(rgb(CARD))
+                            .border_1()
+                            .border_color(rgb(LINE))
+                            .text_color(rgb(TEXT_3))
+                            .hover(|st| st.text_color(rgb(TEXT_2)))
+                    })
                     .child(icon(Icon::Power, 13.).text_color(rgb(if s.on {
                         0xffffff
                     } else {
                         TEXT_3
                     })))
+                    .child(if s.on { "On" } else { "Off" })
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |live, _, _, cx| {
                             if live.arm(crate::midi::Target::FxOn(u), cx) {
                                 return;
                             }
-                            live.fx[u].settings.on = !live.fx[u].settings.on;
-                            live.send_fx(u);
-                            cx.notify();
+                            live.toggle_fx(u, cx);
                         }),
                     ),
             )
@@ -170,8 +225,8 @@ impl Live {
                     .flex()
                     .flex_col()
                     .child(
-                        dropdown(s.kind.name(), 26.0)
-                            .w(px(if self.narrow { 104. } else { 124. }))
+                        dropdown(s.kind.name(), 30.0)
+                            .w(px(if compact { 100. } else { 112. }))
                             .on_mouse_down(
                                 MouseButton::Left,
                                 cx.listener(move |live, _, _, cx| {
@@ -188,34 +243,29 @@ impl Live {
                         d.child(deferred(anchored().snap_to_window().child(menu)).with_priority(1))
                     }),
             )
-            .child(
-                tray()
-                    .child(step(-1, "◀", cx))
-                    .child(
-                        div()
-                            .w(px(40.))
-                            .text_center()
-                            .font_family(MONO)
-                            .text_size(px(11.5))
-                            .text_color(rgb(TEXT))
-                            .child(beats_text_fx(s.beats)),
-                    )
-                    .child(step(1, "▶", cx)),
-            )
-            .child(self.knob_row(Ctl::FxLevel(u), if self.narrow { "" } else { "LEVEL" }, cx))
+            .child(beats)
+            .child(self.knob_row(Ctl::FxLevel(u), if compact { "" } else { "LEVEL" }, cx))
             .child(self.knob_row(
                 Ctl::FxParam(u),
-                if self.narrow { "" } else { s.kind.param_name() },
+                if compact { "" } else { s.kind.param_name() },
                 cx,
             ))
             .child(div().flex_1())
+            .when(s.on && !on_any, |d| {
+                d.child(
+                    div()
+                        .text_size(px(11.))
+                        .text_color(rgb(AMBER))
+                        .child("On no deck"),
+                )
+            })
             .child(tray().children((0..self.shown()).map(|d| {
                 let deck = self.channel_order()[d];
                 let on = f.on[deck];
                 seg(DECK_NAMES[deck], on, 24.0)
                     .w(px(26.))
                     .when(on, |el| {
-                        el.bg(alpha(DECK_COLORS[deck], 0.25))
+                        el.bg(alpha(DECK_COLORS[deck], 0.22))
                             .text_color(rgb(DECK_COLORS[deck]))
                     })
                     .on_mouse_down(
@@ -224,14 +274,7 @@ impl Live {
                             if live.arm(crate::midi::Target::FxAssign(u, deck), cx) {
                                 return;
                             }
-                            let on = !live.fx[u].on[deck];
-                            live.fx[u].on[deck] = on;
-                            live.remote.fx(FxCmd::Assign {
-                                unit: u,
-                                ch: deck,
-                                on,
-                            });
-                            cx.notify();
+                            live.toggle_send(u, deck, cx);
                         }),
                     )
             })))
