@@ -346,8 +346,8 @@ impl Live {
         matches!(self.drag, Some(Drag::Ctl { ctl: c, .. }) if c == ctl)
     }
 
-    /// A knob with its caption above (what it reads while it's turned): dragged up and down,
-    /// wheeled, double-clicked home.
+    /// A knob with its caption above (lit while it's turned): dragged up and down, wheeled,
+    /// double-clicked home.
     pub fn knob(
         &self,
         ctl: Ctl,
@@ -377,14 +377,10 @@ impl Live {
                         .text_size(px(9.))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .whitespace_nowrap()
-                        .when(turning, |d| {
-                            d.font_family(MONO).text_color(rgb(ACCENT_TEXT))
-                        })
-                        .when(!turning, |d| d.text_color(rgb(TEXT_4)))
-                        .child(match turning {
-                            true => crate::detail::value_text(self, ctl, v),
-                            false => caption.to_string(),
-                        }),
+                        // Lit while it's turned. What it reads goes on a line of its own where
+                        // it's used, sized for it: never in place of its name.
+                        .text_color(rgb(if turning { ACCENT_TEXT } else { TEXT_4 }))
+                        .child(caption),
                 )
             })
             .child(

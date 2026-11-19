@@ -340,6 +340,19 @@ fn shots() {
                     // B's track parted into vocals only; A's "part it into" menu open.
                     "vocals" => live.parts_menu = Some(0),
                     "models" => live.show_models = true,
+                    // The headphones turned to their ends, the master down, B's EQ cut.
+                    "extremes" => {
+                        Ctl::Master.set(live, -23.9);
+                        Ctl::Phones.set(live, -39.9);
+                        Ctl::CueMix.set(live, 1.0);
+                        Ctl::Eq(1, 2).set(live, 0.0);
+                        Ctl::Filter(1).set(live, 1.0);
+                        live.drag = Some(crate::controls::Drag::Ctl {
+                            ctl: Ctl::Phones,
+                            from: (0.0, 0.0),
+                            value: -39.9,
+                        });
+                    }
                     "full" => live.settings.layout.library = crate::layout::LibView::Full,
                     "stemsbox" => live
                         .decks
@@ -582,9 +595,32 @@ fn layouts_fit() {
                 Box::new(|l: &mut Live| l.settings.layout.library = LibView::Full),
             ),
             (
-                "the other layer",
+                // Every knob at the end that reads longest, and the headphones' turned: what
+                // they read has to fit where it's printed.
+                "knobs at their extremes, turned",
                 Box::new(|l: &mut Live| {
                     l.settings.layout.library = LibView::Open;
+                    for ch in 0..4 {
+                        Ctl::Trim(ch).set(l, -12.0);
+                        Ctl::Eq(ch, 2).set(l, 0.0);
+                        Ctl::Eq(ch, 1).set(l, 0.27);
+                        Ctl::Eq(ch, 0).set(l, 1.0);
+                        Ctl::Filter(ch).set(l, -1.0);
+                    }
+                    Ctl::Master.set(l, -23.9);
+                    Ctl::Phones.set(l, -39.9);
+                    Ctl::CueMix.set(l, 1.0);
+                    l.drag = Some(crate::controls::Drag::Ctl {
+                        ctl: Ctl::Filter(0),
+                        from: (0.0, 0.0),
+                        value: -1.0,
+                    });
+                }),
+            ),
+            (
+                "the other layer",
+                Box::new(|l: &mut Live| {
+                    l.drag = None;
                     l.layer = [2, 3];
                 }),
             ),
