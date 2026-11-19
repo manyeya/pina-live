@@ -19,7 +19,7 @@ use pina_live_engine::{
     audio::Audio,
     deck::{DeckCmd, HOT_CUES},
     engine::{Command, DECKS, Engine, Remote, Status, engine},
-    library::{self, Library, Track},
+    library::{self, Library},
     mixer::{MixCmd, Side},
     output::{Output, device_rate},
 };
@@ -113,7 +113,6 @@ pub struct DeckUi {
     pub keylock: bool,
     pub slip: bool,
     pub loop_beats: f64,
-    pub jump_beats: f64,
     /// Seconds it's played this load, to log it in the history once it's been heard a while.
     pub heard: f64,
     pub logged: bool,
@@ -139,7 +138,6 @@ impl DeckUi {
             keylock: true,
             slip: false,
             loop_beats: 4.0,
-            jump_beats: 4.0,
             heard: 0.0,
             logged: false,
             platter: Rc::default(),
@@ -1062,10 +1060,6 @@ impl Live {
     /// The library to be saved on the next tick that saves.
     pub fn mark_dirty(&mut self) {
         self.lib_dirty = true;
-    }
-
-    pub fn track(&self, id: u64) -> Option<&Track> {
-        self.lib.get(id)
     }
 
     /// The deck sync follows, if any.

@@ -33,7 +33,6 @@ pub enum Hold {
     HotCue(usize),
     Roll(f64),
     Censor,
-    Bend(f64),
 }
 
 pub enum Drag {
@@ -273,7 +272,6 @@ impl Live {
             Hold::HotCue(k) => Some(Target::HotCue(deck, k)),
             Hold::Roll(b) => Some(Target::Roll(deck, b)),
             Hold::Censor => Some(Target::Censor(deck)),
-            Hold::Bend(_) => None,
         };
         if let Some(t) = target
             && self.arm(t, cx)
@@ -285,7 +283,6 @@ impl Live {
             Hold::HotCue(slot) => DeckCmd::HotCue { slot, down: true },
             Hold::Roll(beats) => DeckCmd::Roll { beats, on: true },
             Hold::Censor => DeckCmd::Censor(true),
-            Hold::Bend(b) => DeckCmd::Bend(b),
         };
         self.deck(deck, c);
         self.drag = Some(Drag::Hold { deck, hold });
@@ -298,7 +295,6 @@ impl Live {
             Hold::HotCue(slot) => DeckCmd::HotCue { slot, down: false },
             Hold::Roll(beats) => DeckCmd::Roll { beats, on: false },
             Hold::Censor => DeckCmd::Censor(false),
-            Hold::Bend(_) => DeckCmd::Bend(0.0),
         };
         self.deck(deck, c);
     }

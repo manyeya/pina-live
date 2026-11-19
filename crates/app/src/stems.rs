@@ -318,12 +318,14 @@ impl Live {
             let left = (p > 0.02).then(|| gone * (1.0 - p as f64) / p as f64);
             let said = match left {
                 Some(l) => format!(
-                    "Parting · {:.0}% · about {} left",
+                    "{} · {:.0}% · about {} left",
+                    job.model,
                     p * 100.0,
                     crate::decks::clock(l, false)
                 ),
                 None => format!(
-                    "Parting · {:.0}% · {}",
+                    "{} · {:.0}% · {}",
+                    job.model,
                     p * 100.0,
                     crate::decks::clock(gone, false)
                 ),
