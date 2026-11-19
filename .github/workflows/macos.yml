@@ -1,6 +1,6 @@
-# Pina Live for macOS (Apple silicon): tested, built, made into Pina Live.app (signed ad hoc, or
-# with the Developer ID in the PINA_SIGN_ID secret), zipped and kept with the run; for a release
-# tag vX.Y.Z, put on that tag's release too. Run it by hand (Actions, macOS, Run workflow) for a
+# Pina Live for macOS: tested, built for Apple silicon and Intel, and made into its disk image with
+# the animated installer on it (signed ad hoc, or with the Developer ID in the PINA_SIGN_ID
+# secret), kept with the run; for a release tag vX.Y.Z, put on that tag's release too. Run it by hand (Actions, macOS, Run workflow) for a
 # build of any branch.
 name: macOS
 
@@ -23,6 +23,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
 
       - uses: Swatinem/rust-cache@v2
 
@@ -30,21 +32,16 @@ jobs:
       - name: Test
         run: cargo test --workspace -- --skip layouts_fit
 
-      - name: Build Pina Live.app
+      # The disk image: "Install Pina Live" (the animated installer) with Pina Live inside it,
+      # for Apple silicon and Intel, in its window of its own design.
+      - name: Make the disk image
         env:
           PINA_SIGN_ID: ${{ secrets.PINA_SIGN_ID }}
-        run: |
-          cargo build --release -p pina-live
-          mkdir -p dist
-          scripts/mac-app.sh target/release/pina-live "dist/Pina Live.app"
-          VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
-          ditto -c -k --keepParent "dist/Pina Live.app" "dist/PinaLive-$VERSION-macos-arm64.zip"
-          rm -rf "dist/Pina Live.app"
-          ls -l dist
+        run: scripts/release-mac.sh
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PinaLive-macos-arm64
+          name: PinaLive-macos
           path: dist/*
 
       - name: Put it on the release

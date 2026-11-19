@@ -1,4 +1,4 @@
-# Pina Live for Windows (x64): tested, built, packed as a zip with what it needs beside it, and
+# Pina Live for Windows (x64): tested, built, made into an installer (and a zip of the same), and
 # kept with the run; for a release tag vX.Y.Z, put on that tag's release too. Run it by hand
 # (Actions, Windows, Run workflow) for a build of any branch.
 name: Windows
@@ -25,8 +25,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # The installer is the Mac's (Windows has its own, below).
       - name: Test
-        run: cargo test --workspace
+        run: cargo test -p pina-live -p pina-live-engine
 
       - name: Build Pina Live
         shell: pwsh
@@ -44,10 +45,21 @@ jobs:
             Sort-Object FullName -Descending
           if (-not ($crt | Where-Object Name -eq 'vcruntime140.dll')) { Write-Error "Visual C++'s runtime DLLs weren't found"; exit 1 }
           $crt | Group-Object Name | ForEach-Object { Copy-Item $_.Group[0].FullName staging\ }
+          Get-ChildItem staging
+
+      # The installer (Inno Setup, in Pina Live's look), and a zip of the same for those who'd
+      # rather not install.
+      - name: Make the installer
+        shell: pwsh
+        run: |
           $version = ((cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages |
             Where-Object name -eq 'pina-live').version
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DVersion=$version" "/DSource=$PWD\staging" scripts\windows\pina-live.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Compress-Archive -Path staging\* -DestinationPath "dist\PinaLive-$version-windows-x64.zip"
-          Get-ChildItem staging, dist
+          Get-ChildItem dist
 
       - uses: actions/upload-artifact@v4
         with:
