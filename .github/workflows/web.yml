@@ -18,11 +18,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  web:
+  # Built and uploaded here; published by the next job. (Publishing in the same job looks for the
+  # upload before GitHub lists it, and a re-run finds two: GitHub's own template splits them.)
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     env:
       CARGO_TERM_COLOR: always
     steps:
@@ -52,5 +51,12 @@ jobs:
         with:
           path: web
 
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
