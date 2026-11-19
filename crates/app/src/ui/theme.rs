@@ -1,0 +1,723 @@
+//! Pina Live's look, Pina Studio's own (copied from it, so the two apps match): colors, type, sizes, icons and the small controls every panel uses. Dark,
+//! quiet surfaces in a few close greys; color is kept for what's playing (tracks, meters) and for
+//! what's on (the accent).
+
+use std::borrow::Cow;
+
+use crate::ui::scale::px;
+use gpui::{
+    Div, FontWeight, Hsla, PathBuilder, Pixels, Point, Svg, canvas, div, point, prelude::*, rgb,
+    svg,
+};
+
+// Surfaces, from the window back to the controls on it.
+pub const BG: u32 = 0x0c0c0f;
+pub const SURFACE: u32 = 0x131317;
+pub const CARD: u32 = 0x1a1a1f;
+pub const STRIP: u32 = 0x18181d;
+pub const WELL: u32 = 0x0f0f13;
+pub const FIELD: u32 = 0x24242b;
+pub const RAISED: u32 = 0x2b2b33;
+pub const OFF: u32 = 0x1e1e25;
+pub const LANE: u32 = 0x0e0e12;
+pub const LANE_ALT: u32 = 0x121217;
+pub const HEADERS: u32 = 0x101014;
+pub const HEADER_SELECTED: u32 = 0x1b1b21;
+pub const LINE: u32 = 0x26262d;
+pub const LINE_SOFT: u32 = 0x1c1c22;
+pub const LINE_STRONG: u32 = 0x34343d;
+
+// Text, from loudest to quietest. The quietest is for decoration only.
+pub const TEXT: u32 = 0xf4f4f6;
+pub const TEXT_2: u32 = 0xd4d4da;
+pub const TEXT_3: u32 = 0x8a8a95;
+pub const TEXT_4: u32 = 0x55555f;
+
+pub const ACCENT: u32 = 0x5b8cff;
+pub const ACCENT_TEXT: u32 = 0xa5c0ff;
+pub const RECORD: u32 = 0xff4d4d;
+pub const SOLO: u32 = 0xffc53d;
+pub const METER_LOW: u32 = 0x3ddc97;
+pub const METER_MID: u32 = 0xffc53d;
+pub const METER_HIGH: u32 = 0xff5c5c;
+/// The agent's color: its cursor, its outline on what it's editing, its avatar.
+pub const AGENT: u32 = 0xc6f432;
+pub const AGENT_TEXT: u32 = 0xd9f99d;
+pub const MASTER: u32 = 0xf4f4f6;
+pub const BUS: u32 = 0xc4c4cc;
+
+// Track colors, picked by what a track is called, else in turn.
+pub const CORAL: u32 = 0xff7a59;
+pub const AMBER: u32 = 0xffc53d;
+pub const MINT: u32 = 0x3ddc97;
+pub const SKY: u32 = 0x38bdf8;
+pub const VIOLET: u32 = 0xa78bfa;
+pub const PINK: u32 = 0xf472b6;
+pub const SLATE: u32 = 0x94a3b8;
+pub const TEAL: u32 = 0x2dd4bf;
+
+pub const CONTROL_BAR_H: f32 = 52.0;
+pub const STATUS_H: f32 = 24.0;
+pub const INSPECTOR_W: f32 = 248.0;
+pub const HEADER_W: f32 = 344.0;
+pub const MARKERS_H: f32 = 22.0;
+pub const RULER_H: f32 = 26.0;
+/// The top of each column beside the ruler (the headers' tools, a side panel's tabs or title),
+/// so their lines meet the ruler's.
+pub const TOP_H: f32 = MARKERS_H + RULER_H;
+/// A track's lane as it opens, and how short and tall one can be dragged.
+pub const LANE_H: f32 = 76.0;
+pub const MIN_LANE_H: f32 = 40.0;
+pub const MAX_LANE_H: f32 = 240.0;
+/// A stack's own row, above its tracks.
+pub const STACK_H: f32 = 48.0;
+pub const MIN_STACK_H: f32 = 36.0;
+pub const EDITOR_H: f32 = 296.0;
+/// The shortest the editor can be dragged.
+pub const EDITOR_MIN_H: f32 = 160.0;
+pub const EDITOR_BAR_H: f32 = 40.0;
+pub const PANEL_W: f32 = 360.0;
+
+pub const SANS: &str = "Geist";
+pub const MONO: &str = "Geist Mono";
+
+/// Geist and Geist Mono (SIL Open Font License, `assets/fonts/OFL.txt`), for the text system.
+pub fn fonts() -> Vec<Cow<'static, [u8]>> {
+    vec![
+        Cow::Borrowed(include_bytes!("../../assets/fonts/Geist-Regular.ttf")),
+        Cow::Borrowed(include_bytes!("../../assets/fonts/Geist-Medium.ttf")),
+        Cow::Borrowed(include_bytes!("../../assets/fonts/Geist-SemiBold.ttf")),
+        Cow::Borrowed(include_bytes!("../../assets/fonts/Geist-Bold.ttf")),
+        Cow::Borrowed(include_bytes!("../../assets/fonts/GeistMono-Regular.ttf")),
+        Cow::Borrowed(include_bytes!("../../assets/fonts/GeistMono-Medium.ttf")),
+        Cow::Borrowed(include_bytes!("../../assets/fonts/GeistMono-SemiBold.ttf")),
+    ]
+}
+
+/// `c` lifted toward white by `t` (0 to 1): text on a tint of the same color.
+pub fn tint(c: u32, t: f32) -> u32 {
+    let ch = |shift: u32| {
+        let v = ((c >> shift) & 0xff) as f32;
+        ((v + (255.0 - v) * t).round() as u32) << shift
+    };
+    ch(16) | ch(8) | ch(0)
+}
+
+pub fn alpha(c: u32, a: f32) -> Hsla {
+    Hsla::from(rgb(c)).opacity(a)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Icon {
+    Play,
+    Pause,
+    Stop,
+    ToStart,
+    Record,
+    Cycle,
+    Metronome,
+    PanelLeft,
+    PanelBottom,
+    Mixer,
+    Grid,
+    Chevron,
+    /// A stack's fold: its tracks shown (as `Chevron`) or folded away.
+    ChevronRight,
+    /// A summing stack: layers.
+    Stack,
+    Plus,
+    Minus,
+    Close,
+    Pointer,
+    Pencil,
+    Scissors,
+    Eraser,
+    Magnet,
+    Agent,
+    Keys,
+    /// A computer's keyboard: shortcuts.
+    Keyboard,
+    Wave,
+    Bus,
+    Output,
+    More,
+    Scale,
+    Export,
+    Plug,
+    Search,
+    Link,
+    Loop,
+    Samples,
+    Lock,
+    Unlock,
+    Folder,
+    Rescan,
+    Back,
+    Forward,
+    Shuffle,
+    Expand,
+    PanelRight,
+    Send,
+    Check,
+    Copy,
+    Settings,
+    Text,
+    Glue,
+    Headphones,
+    Mute,
+    Zoom,
+    Fade,
+    Stretch,
+    Power,
+    Trash,
+    Pulse,
+    /// The EQ's band shapes, drawn as their curves.
+    Bell,
+    LowShelf,
+    LowCut,
+    HighShelf,
+    HighCut,
+    Notch,
+    BandPass,
+    TiltShelf,
+    FlatTilt,
+    AllPass,
+    Dice,
+    ClearBox,
+    RotateLeft,
+    RotateRight,
+    ChevronUp,
+    Speaker,
+    MidiIn,
+    MidiOut,
+    Mono,
+    LiveRecord,
+    ArrowRight,
+    ArrowLeft,
+    PingPong,
+    Pendulum,
+    Wander,
+    Random,
+    AutoZoom,
+    StepNarrow,
+    StepWide,
+    Kick,
+    Snare,
+    HiHat,
+    Clap,
+    Tom,
+    Cymbal,
+    Percussion,
+    Note,
+    Curve,
+    Learn,
+    /// A thing liked: outlined, and filled once it is.
+    Heart,
+    HeartFilled,
+    /// Things in rows.
+    List,
+}
+
+impl Icon {
+    fn path(self) -> &'static str {
+        match self {
+            Icon::Play => {
+                r##"<path fill="#000" d="M8 5.6v12.8a1 1 0 0 0 1.53.85l10.2-6.4a1 1 0 0 0 0-1.7L9.53 4.75A1 1 0 0 0 8 5.6z"/>"##
+            }
+            Icon::Pause => {
+                r##"<rect fill="#000" stroke="none" x="6.5" y="5" width="4" height="14" rx="1.2"/><rect fill="#000" stroke="none" x="13.5" y="5" width="4" height="14" rx="1.2"/>"##
+            }
+            Icon::Stop => r##"<rect x="6.5" y="6.5" width="11" height="11" rx="2"/>"##,
+            Icon::ToStart => r##"<path d="M6 5v14M18 6.5l-8.5 5.5 8.5 5.5z"/>"##,
+            Icon::Record => r##"<circle fill="#000" stroke="none" cx="12" cy="12" r="5.5"/>"##,
+            Icon::Cycle => {
+                r##"<path d="M17 3l3 3-3 3M4 11V9.5A3.5 3.5 0 0 1 7.5 6H20M7 21l-3-3 3-3M20 13v1.5a3.5 3.5 0 0 1-3.5 3.5H4"/>"##
+            }
+            Icon::Metronome => r##"<path d="M10 3.5h4l4.5 17h-13zM12 16l4.5-8.5M7.5 16h9"/>"##,
+            Icon::PanelLeft => {
+                r##"<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/>"##
+            }
+            Icon::PanelBottom => {
+                r##"<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M3.5 13.5h17"/>"##
+            }
+            Icon::Mixer => {
+                r##"<path d="M6 4v5M6 13v7M12 4v11M12 19v1M18 4v2M18 10v10"/><circle cx="6" cy="11" r="2"/><circle cx="12" cy="17" r="2"/><circle cx="18" cy="8" r="2"/>"##
+            }
+            Icon::Grid => {
+                r##"<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>"##
+            }
+            Icon::Chevron => r##"<path d="M6 9l6 6 6-6"/>"##,
+            Icon::ChevronRight => r##"<path d="M9 6l6 6-6 6"/>"##,
+            Icon::Stack => {
+                r##"<path d="M12 3.5l8.5 4.5-8.5 4.5-8.5-4.5z"/><path d="M3.5 12l8.5 4.5 8.5-4.5"/><path d="M3.5 16l8.5 4.5 8.5-4.5"/>"##
+            }
+            Icon::Plus => r##"<path d="M6 12h12M12 6v12"/>"##,
+            Icon::Minus => r##"<path d="M6 12h12"/>"##,
+            Icon::Close => r##"<path d="M7 7l10 10M17 7L7 17"/>"##,
+            Icon::Pointer => r##"<path d="M5 3.5l13 7.2-5.6 1.6-2.4 5.3z"/>"##,
+            Icon::Pencil => r##"<path d="M15.5 4.5l4 4L8 20H4v-4z"/>"##,
+            Icon::Scissors => {
+                r##"<circle cx="6.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/><path d="M8.3 15.7L18 4M15.7 15.7L6 4"/>"##
+            }
+            Icon::Eraser => {
+                r##"<path d="M9 20h11M4.6 14.6l9.5-9.5a2 2 0 0 1 2.8 0l2 2a2 2 0 0 1 0 2.8L11 18.8a2 2 0 0 1-1.4.6H8.4a2 2 0 0 1-1.4-.6l-2.4-2.4a1.2 1.2 0 0 1 0-1.8z"/>"##
+            }
+            Icon::Magnet => r##"<path d="M6 4v7a6 6 0 0 0 12 0V4M6 8h4M14 8h4"/>"##,
+            Icon::Agent => r##"<path stroke-width="2.25" d="M5 7l5 5-5 5M12.5 17.5H19"/>"##,
+            Icon::Keys => r##"<path d="M4 5h16v14H4zM8.5 5v8M15.5 5v8M12 13v6"/>"##,
+            Icon::Keyboard => {
+                r##"<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M6.5 10h1M10.5 10h1M14.5 10h1M8 14h8"/>"##
+            }
+            Icon::Wave => r##"<path d="M3 12h2M7 8v8M10 5v14M13 9v6M16 7v10M19 11v2"/>"##,
+            Icon::Bus => r##"<path d="M4 7h16M4 12h16M4 17h16M8 4v6M16 9v6M11 14v6"/>"##,
+            Icon::Output => r##"<path d="M4 12h11M11 7l5 5-5 5M19 5v14"/>"##,
+            Icon::Text => r##"<path d="M5 6V4h14v2M12 4v16M9 20h6"/>"##,
+            Icon::Glue => {
+                r##"<path d="m8 6 4-4 4 4"/><path d="M12 2v10.3a4 4 0 0 1-1.17 2.87L4 22"/><path d="m20 22-5-5"/>"##
+            }
+            Icon::Headphones => {
+                r##"<path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/>"##
+            }
+            Icon::Mute => {
+                r##"<path d="M11 4.7a.7.7 0 0 0-1.2-.5L6.4 7.6A1.4 1.4 0 0 1 5.4 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.4a1.4 1.4 0 0 1 1 .4l3.4 3.4a.7.7 0 0 0 1.2-.5z"/><path d="m22 9-6 6M16 9l6 6"/>"##
+            }
+            Icon::Zoom => {
+                r##"<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M11 8v6M8 11h6"/>"##
+            }
+            Icon::Fade => r##"<path d="M3 20C10 20 14 13 21 4"/><path d="M3 20h18"/>"##,
+            Icon::Stretch => r##"<path d="m18 8 4 4-4 4M6 8l-4 4 4 4M2 12h20"/>"##,
+            Icon::Power => r##"<path d="M12 3v8M6.3 7.3a8 8 0 1 0 11.4 0"/>"##,
+            Icon::Trash => r##"<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>"##,
+            Icon::Pulse => r##"<path d="M3 12h3l3-7 4 14 3-7h5"/>"##,
+            Icon::Bell => r##"<path d="M2 16C7 16 9 8 12 8C15 8 17 16 22 16"/>"##,
+            Icon::LowShelf => r##"<path d="M2 8H7C10 8 12 16 15 16H22"/>"##,
+            Icon::LowCut => r##"<path d="M3 18C5 11 8 8 12 8H22"/>"##,
+            Icon::HighShelf => r##"<path d="M2 16H9C12 16 14 8 17 8H22"/>"##,
+            Icon::HighCut => r##"<path d="M2 8H12C16 8 19 11 21 18"/>"##,
+            Icon::Notch => r##"<path d="M2 9H8C10 9 11 18 12 18C13 18 14 9 16 9H22"/>"##,
+            Icon::BandPass => r##"<path d="M3 18C8 18 9 8 12 8C15 8 16 18 21 18"/>"##,
+            Icon::TiltShelf => {
+                r##"<path stroke-opacity=".4" stroke-dasharray="2 2" d="M2 12H22"/><path d="M2 16H6C10 16 14 8 18 8H22"/>"##
+            }
+            Icon::FlatTilt => r##"<path d="M2 17L22 7"/>"##,
+            Icon::AllPass => {
+                r##"<path d="M2 9H22"/><path stroke-opacity=".5" d="M4 16C6 13 8 13 10 16C12 19 14 19 16 16C18 13 20 13 21 15"/>"##
+            }
+            Icon::Settings => {
+                r##"<path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/>"##
+            }
+            Icon::More => {
+                r##"<circle fill="#000" stroke="none" cx="6" cy="12" r="1.6"/><circle fill="#000" stroke="none" cx="12" cy="12" r="1.6"/><circle fill="#000" stroke="none" cx="18" cy="12" r="1.6"/>"##
+            }
+            Icon::Scale => r##"<path d="M4 7h16M4 12h16M4 17h10"/>"##,
+            Icon::Export => r##"<path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19h14"/>"##,
+            Icon::Plug => {
+                r##"<path d="M9 3.5v4M15 3.5v4M6.5 7.5h11v3a5.5 5.5 0 0 1-11 0zM12 16v4.5"/>"##
+            }
+            Icon::Search => r##"<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/>"##,
+            Icon::Link => {
+                r##"<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>"##
+            }
+            Icon::Loop => {
+                r##"<path d="M4 12a5 5 0 0 1 5-5h9M15 4l3 3-3 3M20 12a5 5 0 0 1-5 5H6M9 20l-3-3 3-3"/>"##
+            }
+            Icon::Samples => {
+                r##"<path d="M3.5 12h1.5M7.5 8.5v7M11 5.5v13"/><circle cx="16.5" cy="11" r="3.5"/><path d="M19 13.5l2.5 2.5"/>"##
+            }
+            Icon::Lock => {
+                r##"<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>"##
+            }
+            Icon::Unlock => {
+                r##"<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 6.8-1.2"/>"##
+            }
+            Icon::Folder => {
+                r##"<path d="M3.5 7.5a2 2 0 0 1 2-2h3.8l2 2.2h7.2a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>"##
+            }
+            Icon::Rescan => r##"<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"/>"##,
+            Icon::Back => r##"<path d="M14.5 6l-6 6 6 6"/>"##,
+            Icon::Forward => r##"<path d="M9.5 6l6 6-6 6"/>"##,
+            Icon::Send => r##"<path stroke-width="2.25" d="M12 19V5.5M6.5 11L12 5.5 17.5 11"/>"##,
+            Icon::Copy => {
+                r##"<rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5.5 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v.5"/>"##
+            }
+            Icon::Check => r##"<path stroke-width="2.25" d="M5 12.5l4.5 4.5L19 7.5"/>"##,
+            Icon::Expand => {
+                r##"<path d="M14 4.5h5.5V10M10 19.5H4.5V14M19.5 4.5l-6 6M4.5 19.5l6-6"/>"##
+            }
+            Icon::PanelRight => {
+                r##"<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15"/>"##
+            }
+            Icon::Dice => {
+                r##"<rect x="4" y="4" width="16" height="16" rx="3"/><circle fill="#000" stroke="none" cx="8.5" cy="8.5" r="1.3"/><circle fill="#000" stroke="none" cx="15.5" cy="8.5" r="1.3"/><circle fill="#000" stroke="none" cx="12" cy="12" r="1.3"/><circle fill="#000" stroke="none" cx="8.5" cy="15.5" r="1.3"/><circle fill="#000" stroke="none" cx="15.5" cy="15.5" r="1.3"/>"##
+            }
+            Icon::ClearBox => {
+                r##"<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9l6 6M15 9l-6 6"/>"##
+            }
+            Icon::RotateLeft => {
+                r##"<path fill="#000" stroke="none" d="M2.5 12l5-4v8z"/><rect x="11" y="6" width="9" height="12" rx="1.5"/>"##
+            }
+            Icon::RotateRight => {
+                r##"<rect x="4" y="6" width="9" height="12" rx="1.5"/><path fill="#000" stroke="none" d="M21.5 12l-5-4v8z"/>"##
+            }
+            Icon::ChevronUp => r##"<path d="M6 15l6-6 6 6"/>"##,
+            Icon::Speaker => {
+                r##"<path d="M11 5L6.5 9H3.5v6h3l4.5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/>"##
+            }
+            Icon::MidiIn => {
+                r##"<path d="M2.5 8.5l3.5 3.5-3.5 3.5"/><circle cx="15" cy="12" r="6.5"/><circle fill="#000" stroke="none" cx="12" cy="11" r=".9"/><circle fill="#000" stroke="none" cx="18" cy="11" r=".9"/><circle fill="#000" stroke="none" cx="15" cy="9" r=".9"/><circle fill="#000" stroke="none" cx="12.8" cy="14" r=".9"/><circle fill="#000" stroke="none" cx="17.2" cy="14" r=".9"/>"##
+            }
+            Icon::MidiOut => {
+                r##"<circle cx="9" cy="12" r="6.5"/><circle fill="#000" stroke="none" cx="6" cy="11" r=".9"/><circle fill="#000" stroke="none" cx="12" cy="11" r=".9"/><circle fill="#000" stroke="none" cx="9" cy="9" r=".9"/><circle fill="#000" stroke="none" cx="6.8" cy="14" r=".9"/><circle fill="#000" stroke="none" cx="11.2" cy="14" r=".9"/><path d="M18 8.5l3.5 3.5-3.5 3.5"/>"##
+            }
+            Icon::Mono => {
+                r##"<path d="M9.5 3.5l5 5M14.5 3.5l-5 5"/><rect x="7" y="12.5" width="10" height="8" rx="1.5"/>"##
+            }
+            Icon::LiveRecord => {
+                r##"<path d="M2.5 8.5l3.5 3.5-3.5 3.5"/><circle cx="15" cy="12" r="6.5"/><path d="M13 15.5v-7h2.4a2 2 0 0 1 0 4H13M15 12.5l2 3"/>"##
+            }
+            Icon::ArrowRight => r##"<path d="M4 12h15M14 7l5 5-5 5"/>"##,
+            Icon::ArrowLeft => r##"<path d="M20 12H5M10 7l-5 5 5 5"/>"##,
+            Icon::PingPong => r##"<path d="M4 8.5h15M16 5.5l3 3-3 3M20 15.5H5M8 12.5l-3 3 3 3"/>"##,
+            Icon::Pendulum => {
+                r##"<path d="M4 15a8 8 0 0 1 16 0"/><path d="M17 12.5l3 2.5 2-3M7 12.5l-3 2.5-2-3"/>"##
+            }
+            Icon::Wander => {
+                r##"<path d="M3 15c2.5-5 4.5 1 7-3s4.5 3 7-1"/><path d="M15 9.5l2.5 1.5 1-3"/>"##
+            }
+            Icon::Random => {
+                r##"<path d="M4 7h3.5c4.5 0 4.5 10 9 10H20M17.5 14.5L20 17l-2.5 2.5"/><circle fill="#000" stroke="none" cx="17" cy="7" r="1.5"/><circle fill="#000" stroke="none" cx="6" cy="17" r="1.5"/>"##
+            }
+            Icon::AutoZoom => {
+                r##"<path d="M5 4h14M5 20h14M12 7v10M9 9.5l3-3 3 3M9 14.5l3 3 3-3"/>"##
+            }
+            Icon::StepNarrow => r##"<rect x="8.5" y="5" width="7" height="14" rx="1.5"/>"##,
+            Icon::StepWide => r##"<rect x="3.5" y="6" width="17" height="12" rx="1.5"/>"##,
+            Icon::Kick => {
+                r##"<circle cx="12" cy="10" r="6.5"/><circle cx="12" cy="10" r="2"/><path d="M8 15.5l-2 5M16 15.5l2 5M10 20.5h4"/>"##
+            }
+            Icon::Snare => {
+                r##"<ellipse cx="12" cy="8" rx="8" ry="2.5"/><path d="M4 8v8c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V8M7 10v7M12 10.5v8M17 10v7"/>"##
+            }
+            Icon::HiHat => r##"<path d="M3 8.5h18M5 10.5h14M12 6v14M9 20h6M10.5 6h3"/>"##,
+            Icon::Clap => {
+                r##"<path d="M8 12V6.5a1.5 1.5 0 0 1 3 0V11M11 10V5a1.5 1.5 0 0 1 3 0v6M14 10.5V7a1.5 1.5 0 0 1 3 0v6.5a6 6 0 0 1-6 6h-.5A5.5 5.5 0 0 1 5 14l-.8-2.6a1.5 1.5 0 0 1 2.8-1L8 12"/>"##
+            }
+            Icon::Tom => {
+                r##"<ellipse cx="12" cy="9" rx="6.5" ry="2.2"/><path d="M5.5 9v6c0 1.2 2.9 2.2 6.5 2.2s6.5-1 6.5-2.2V9"/>"##
+            }
+            Icon::Cymbal => {
+                r##"<path d="M2.5 10.5c3-2 16-2 19 0M7 9.5c1.5-1.5 8.5-1.5 10 0M12 11v9M9 20h6"/>"##
+            }
+            Icon::Percussion => r##"<path d="M7 20l3-14h4l3 14z"/><path d="M8.5 13h7"/>"##,
+            Icon::Note => {
+                r##"<path d="M9 17.5V5.5l10-2v12"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/>"##
+            }
+            Icon::Curve => {
+                r##"<path d="M3 17c4 0 5-10 9-10s5 10 9 10"/><circle fill="#000" stroke="none" cx="12" cy="7" r="1.5"/>"##
+            }
+            Icon::Learn => {
+                r##"<circle cx="12" cy="12" r="7.5"/><circle fill="#000" stroke="none" cx="12" cy="12" r="3"/>"##
+            }
+            Icon::Heart => {
+                r##"<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>"##
+            }
+            Icon::HeartFilled => {
+                r##"<path fill="#000" d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>"##
+            }
+            Icon::List => {
+                r##"<path d="M9 6.5h11M9 12h11M9 17.5h11"/><circle fill="#000" stroke="none" cx="4.75" cy="6.5" r="1.25"/><circle fill="#000" stroke="none" cx="4.75" cy="12" r="1.25"/><circle fill="#000" stroke="none" cx="4.75" cy="17.5" r="1.25"/>"##
+            }
+            Icon::Shuffle => {
+                r##"<path d="M4 7h3.5c4.5 0 4.5 10 9 10H20M17.5 14.5L20 17l-2.5 2.5M4 17h3.5c1.6 0 2.6-1.3 3.4-3M13.1 10c.8-1.7 1.8-3 3.4-3H20M17.5 4.5L20 7l-2.5 2.5"/>"##
+            }
+        }
+    }
+
+    fn svg(self) -> &'static [u8] {
+        // Built once per icon and kept: the SVG renderer caches by the bytes' hash.
+        use std::sync::OnceLock;
+        static CACHE: [OnceLock<Vec<u8>>; 160] = [const { OnceLock::new() }; 160];
+        CACHE[self as usize].get_or_init(|| {
+            format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">{}</svg>"##,
+                self.path()
+            )
+            .into_bytes()
+        })
+    }
+}
+
+/// An icon, `size` pixels square, in the text color (set it with `text_color`).
+pub fn icon(i: Icon, size: f32) -> Svg {
+    svg().data(i.svg()).size(px(size)).flex_none()
+}
+
+/// A tray of segmented buttons, like the transport and the tool picker.
+pub fn tray() -> Div {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(2.))
+        .p(px(3.))
+        .bg(rgb(BG))
+        .border_1()
+        .border_color(rgb(LINE))
+        .rounded(px(10.))
+}
+
+/// A text button in a tray: raised when on.
+pub fn seg(label: impl Into<gpui::SharedString>, on: bool, h: f32) -> Div {
+    div()
+        .h(px(h))
+        .px(px(if h >= 28.0 { 12. } else { 10. }))
+        .flex()
+        .items_center()
+        .justify_center()
+        .gap(px(6.))
+        .rounded(px(if h >= 28.0 { 7. } else { 6. }))
+        .text_size(px(12.))
+        .font_weight(FontWeight::MEDIUM)
+        .whitespace_nowrap()
+        .cursor_pointer()
+        .bg(rgb(if on { RAISED } else { BG }))
+        .text_color(rgb(if on { TEXT } else { TEXT_3 }))
+        .when(!on, |d| d.hover(|s| s.bg(rgb(OFF)).text_color(rgb(TEXT_2))))
+        .child(label.into())
+}
+
+/// An icon button in a tray, `h` square: raised when on.
+pub fn icon_seg(i: Icon, on: bool, h: f32) -> Div {
+    div()
+        .size(px(h))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(if h >= 28.0 { 7. } else { 6. }))
+        .cursor_pointer()
+        .bg(rgb(if on { RAISED } else { BG }))
+        .text_color(rgb(if on { TEXT } else { TEXT_3 }))
+        .when(!on, |d| d.hover(|s| s.bg(rgb(OFF)).text_color(rgb(TEXT_2))))
+        .child(
+            icon(i, if h >= 28.0 { 16. } else { 14. }).text_color(rgb(if on {
+                TEXT
+            } else {
+                TEXT_3
+            })),
+        )
+}
+
+/// A button with a border and a chevron, that opens a menu.
+pub fn dropdown(label: impl Into<gpui::SharedString>, h: f32) -> Div {
+    div()
+        .h(px(h))
+        .pl(px(8.))
+        .pr(px(5.))
+        .flex()
+        .items_center()
+        .gap(px(4.))
+        .rounded(px(6.))
+        .border_1()
+        .border_color(rgb(RAISED))
+        .bg(rgb(CARD))
+        .text_color(rgb(TEXT))
+        .text_size(px(12.))
+        .whitespace_nowrap()
+        .cursor_pointer()
+        .hover(|s| s.border_color(rgb(LINE_STRONG)))
+        .child(
+            div()
+                .min_w(px(0.))
+                .overflow_hidden()
+                .text_ellipsis()
+                .child(label.into()),
+        )
+        .child(icon(Icon::Chevron, 12.).text_color(rgb(TEXT_3)))
+}
+
+/// A plain bordered button.
+pub fn button(label: impl Into<gpui::SharedString>, on: bool) -> Div {
+    div()
+        .h(px(26.))
+        .px(px(10.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .gap(px(6.))
+        .rounded(px(7.))
+        .border_1()
+        .border_color(rgb(if on { RAISED } else { LINE }))
+        .bg(rgb(if on { RAISED } else { CARD }))
+        .text_color(rgb(if on { TEXT } else { TEXT_2 }))
+        .text_size(px(11.5))
+        .font_weight(FontWeight::MEDIUM)
+        .whitespace_nowrap()
+        .cursor_pointer()
+        .hover(|s| s.bg(rgb(RAISED)).text_color(rgb(TEXT)))
+        .child(label.into())
+}
+
+/// A small square toggle, like M, S and R on a track: lit in its color when on.
+pub fn toggle(label: &'static str, on: bool, on_bg: u32, on_text: u32, size: f32) -> Div {
+    div()
+        .size(px(size))
+        .flex_none()
+        .rounded(px(5.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .text_size(px(10.))
+        .font_weight(FontWeight::BOLD)
+        .cursor_pointer()
+        .bg(rgb(if on { on_bg } else { OFF }))
+        .text_color(rgb(if on { on_text } else { TEXT_3 }))
+        .when(!on, |d| {
+            d.hover(|s| s.bg(rgb(RAISED)).text_color(rgb(TEXT_2)))
+        })
+        .child(label)
+}
+
+/// An on/off switch.
+pub fn switch(on: bool) -> Div {
+    div()
+        .relative()
+        .w(px(28.))
+        .h(px(16.))
+        .flex_none()
+        .rounded(px(8.))
+        .cursor_pointer()
+        .bg(rgb(if on { ACCENT } else { RAISED }))
+        .child(
+            div()
+                .absolute()
+                .top(px(2.))
+                .left(px(if on { 14. } else { 2. }))
+                .size(px(12.))
+                .rounded(px(6.))
+                .bg(rgb(if on { 0xffffff } else { TEXT_3 })),
+        )
+}
+
+/// A small label over a section: "Region", "Smart Controls".
+pub fn section_title(s: impl Into<gpui::SharedString>) -> Div {
+    div()
+        .text_size(px(11.))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(rgb(TEXT_3))
+        .child(s.into())
+}
+
+/// A chip of colored text on a tint of its color.
+pub fn chip(s: impl Into<gpui::SharedString>, color: u32) -> Div {
+    div()
+        .h(px(18.))
+        .px(px(6.))
+        .flex()
+        .items_center()
+        .rounded(px(4.))
+        .bg(alpha(color, 0.14))
+        .text_color(rgb(color))
+        .text_size(px(10.))
+        .font_weight(FontWeight::SEMIBOLD)
+        .whitespace_nowrap()
+        .child(s.into())
+}
+
+/// A knob: an arc around a disc, the arc lit up to the value. `value` is 0 to 1, or -1 to 1
+/// from the top when `bipolar`.
+pub fn knob(value: f32, size: f32, color: u32, bipolar: bool) -> impl IntoElement {
+    let thick = if size >= 30.0 { 3.0 } else { 2.5 };
+    canvas(
+        |_, _, _| {},
+        move |b, _, window, _| {
+            let c = b.center();
+            let r = f32::from(b.size.width.min(b.size.height)) / 2.0 - thick / 2.0 - 0.5;
+            let at = |deg: f32, rr: f32| -> Point<Pixels> {
+                let a = deg.to_radians();
+                point(c.x + px(rr * a.cos()), c.y + px(rr * a.sin()))
+            };
+            let arc = |from: f32, to: f32| {
+                let mut p = PathBuilder::stroke(px(thick));
+                p.move_to(at(from, r));
+                // Arcs over 180° in two halves, so the flags never have to choose.
+                let mid = (from + to) / 2.0;
+                p.arc_to(point(px(r), px(r)), px(0.), false, to > from, at(mid, r));
+                p.arc_to(point(px(r), px(r)), px(0.), false, to > from, at(to, r));
+                p.build().ok()
+            };
+            if let Some(track) = arc(135.0, 405.0) {
+                window.paint_path(track, rgb(RAISED));
+            }
+            let (from, to) = if bipolar {
+                (270.0, 270.0 + value.clamp(-1.0, 1.0) * 135.0)
+            } else {
+                (135.0, 135.0 + value.clamp(0.0, 1.0) * 270.0)
+            };
+            if (to - from).abs() > 0.5
+                && let Some(lit) = arc(from.min(to), from.max(to))
+            {
+                window.paint_path(lit, rgb(color));
+            }
+            // The disc as a round quad: the same circle, far cheaper to draw than a path.
+            let body = r * 0.68;
+            window.paint_quad(
+                gpui::fill(
+                    gpui::Bounds::centered_at(c, gpui::size(px(body * 2.0), px(body * 2.0))),
+                    rgb(RAISED),
+                )
+                .corner_radii(px(body)),
+            );
+            let mut pointer = PathBuilder::stroke(px(if size >= 30.0 { 2.0 } else { 1.75 }));
+            pointer.move_to(at(to, r * 0.18));
+            pointer.line_to(at(to, r * 0.6));
+            if let Ok(p) = pointer.build() {
+                window.paint_path(p, rgb(TEXT));
+            }
+        },
+    )
+    .size(px(size))
+    .flex_none()
+}
+
+/// "−3.2", "+6.0", "−∞": a level as the strips show it, with a true minus.
+pub fn db_text(db: f32) -> String {
+    if db <= -100.0 {
+        "−∞".to_string()
+    } else if db.abs() < 0.05 {
+        "0.0".to_string()
+    } else if db < 0.0 {
+        format!("−{:.1}", -db)
+    } else {
+        format!("+{db:.1}")
+    }
+}
+
+/// A window's corner to drag it bigger or smaller by: three short diagonal lines, as windows have.
+pub fn resize_grip() -> Div {
+    div()
+        .absolute()
+        .right(px(1.))
+        .bottom(px(1.))
+        .size(px(18.))
+        .cursor(gpui::CursorStyle::ResizeUpLeftDownRight)
+        .child(
+            canvas(
+                |_, _, _| {},
+                |b, _, window, _| {
+                    let (r, bottom) = (
+                        b.origin.x + b.size.width - px(4.),
+                        b.origin.y + b.size.height - px(4.),
+                    );
+                    for k in 1..=3 {
+                        let o = px(k as f32 * 4.0);
+                        let mut p = PathBuilder::stroke(px(1.25));
+                        p.move_to(point(r - o, bottom));
+                        p.line_to(point(r, bottom - o));
+                        if let Ok(p) = p.build() {
+                            window.paint_path(p, rgb(TEXT_3));
+                        }
+                    }
+                },
+            )
+            .size_full(),
+        )
+}
