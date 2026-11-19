@@ -12,6 +12,7 @@ pub mod grid;
 pub mod library;
 pub mod mixer;
 pub mod output;
+pub mod part;
 pub mod record;
 pub mod stems;
 

@@ -11,6 +11,7 @@ mod layout;
 mod live;
 mod midi;
 mod mixer;
+mod models;
 mod probe;
 mod settings;
 mod stems;

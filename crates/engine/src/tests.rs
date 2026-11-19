@@ -602,3 +602,17 @@ fn first_sound_skips_leading_silence() {
     assert_eq!(Audio::new(x.clone(), x).first_sound(), 1000.0);
     assert_eq!(Audio::new(vec![0.0; 50], vec![0.0; 50]).first_sound(), 0.0);
 }
+
+/// Pieces of a parted track crossfade into each other: their says add to one at every frame.
+#[test]
+fn pieces_add_to_one() {
+    use crate::part::weight;
+    let (n, share, fade) = (4, 1000, 300);
+    for at in 0..n * share {
+        let sum: f32 = (0..n).map(|k| weight(k, n, share, fade, at)).sum();
+        assert!((sum - 1.0).abs() < 1e-5, "{at}: {sum}");
+    }
+    assert_eq!(weight(0, n, share, fade, 10), 1.0);
+    assert_eq!(weight(1, n, share, fade, 10), 0.0);
+}
+

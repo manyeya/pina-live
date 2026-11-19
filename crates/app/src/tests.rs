@@ -43,23 +43,15 @@ fn test_home() -> PathBuf {
     DIR.get_or_init(|| {
         let d = std::env::temp_dir().join(format!("pina-live-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
-        let model = d.join("models").join("roformer");
-        std::fs::create_dir_all(&model).unwrap();
-        std::fs::write(
-            model.join("model.json"),
-            r#"{"name": "BS-RoFormer SW", "stems": ["bass", "drums", "other", "vocals"], "input": "wave"}"#,
-        )
-        .unwrap();
-        std::fs::write(model.join("model.onnx"), b"bigger").unwrap();
-        // A second, smaller (quicker) model giving the same stems.
-        let quick = d.join("models").join("htdemucs");
-        std::fs::create_dir_all(&quick).unwrap();
-        std::fs::write(
-            quick.join("model.json"),
-            r#"{"name": "HTDemucs", "stems": ["drums", "bass", "other", "vocals"], "input": "wave"}"#,
-        )
-        .unwrap();
-        std::fs::write(quick.join("model.onnx"), b"q").unwrap();
+        // Three of the models Pina knows, their files' sizes the wrong way round to their
+        // speeds (Kim Vocal 2's the quickest, its file here the biggest).
+        for (id, bytes) in [("bs-roformer-sw", 6), ("htdemucs-drums", 1), ("kim-vocal-2", 10)] {
+            let k = pina_engine::separate::catalog::KNOWN.iter().find(|k| k.id == id).unwrap();
+            let model = d.join("models").join(id);
+            std::fs::create_dir_all(&model).unwrap();
+            std::fs::write(model.join("model.json"), k.json).unwrap();
+            std::fs::write(model.join("model.onnx"), vec![0u8; bytes]).unwrap();
+        }
         // SAFETY: set once, before any test thread reads them.
         unsafe {
             std::env::set_var("PINA_LIVE_HOME", &d);
@@ -142,9 +134,10 @@ fn stem_options_pick_their_model() {
     use crate::stems::Parts;
     test_home();
     let name = |p: Parts| p.model().map(|m| m.about.name.to_string());
-    assert_eq!(name(Parts::Vocals).as_deref(), Some("HTDemucs"));
-    assert_eq!(name(Parts::Beat).as_deref(), Some("HTDemucs"));
-    assert_eq!(name(Parts::VocalsBeat).as_deref(), Some("HTDemucs"));
+    // The quickest that gives it, by Pina's measured pace, not the file's size.
+    assert_eq!(name(Parts::Vocals).as_deref(), Some("Kim Vocal 2"));
+    assert_eq!(name(Parts::Beat).as_deref(), Some("HTDemucs drums"));
+    assert_eq!(name(Parts::VocalsBeat).as_deref(), Some("HTDemucs drums"));
     assert_eq!(name(Parts::All).as_deref(), Some("BS-RoFormer SW"));
 }
 
@@ -310,6 +303,7 @@ fn shots() {
                     "closed" => live.settings.layout.library = crate::layout::LibView::Closed,
                     // B's track parted into vocals only; A's "part it into" menu open.
                     "vocals" => live.parts_menu = Some(0),
+                    "models" => live.show_models = true,
                     "full" => live.settings.layout.library = crate::layout::LibView::Full,
                     "stemsbox" => live
                         .decks

@@ -247,6 +247,12 @@ pub struct Live {
     pub drag: Option<Drag>,
     pub settings: crate::settings::Settings,
     pub show_settings: bool,
+    /// The stem models panel open; a model coming down; what went wrong last; the model folder
+    /// asked to be removed (a second click removes it).
+    pub show_models: bool,
+    pub download: Option<crate::models::Download>,
+    pub model_note: Option<String>,
+    pub remove_armed: Option<PathBuf>,
     /// A track being parted into stems, and the last thing that went wrong doing so.
     pub separating: Option<crate::stems::Job>,
     pub stem_note: Option<String>,
@@ -502,6 +508,10 @@ impl Live {
             drag: None,
             settings: crate::settings::Settings::load(),
             show_settings: false,
+            show_models: false,
+            download: None,
+            model_note: None,
+            remove_armed: None,
             separating: None,
             stem_note: None,
             midi: None,
@@ -596,6 +606,10 @@ impl Live {
         self.fall_meters();
         if self.separating.is_some() {
             self.poll_separation(cx);
+            changed = true;
+        }
+        if self.download.is_some() {
+            self.poll_download();
             changed = true;
         }
         for (id, found) in self.analyzer.poll() {
@@ -749,6 +763,12 @@ impl Live {
         }
         if crate::stems::has_stems(id) {
             self.load_stems(deck, id, cx);
+        } else if self.settings.part_on_load
+            && self.separating.is_none()
+            && self.decks[deck].parts.model().is_some()
+        {
+            // Started now, the stems are there (or nearly) by the time they're reached for.
+            self.separate(id, self.decks[deck].parts, cx);
         }
         // The pitch fader as it's set carries on to the new track.
         self.deck(deck, DeckCmd::Tempo(1.0 + self.decks[deck].fader));
@@ -1272,6 +1292,7 @@ impl Render for Live {
                     })
             })
             .when(self.show_settings, |d| d.child(self.settings_panel(cx)))
+            .when(self.show_models, |d| d.child(self.models_panel(cx)))
             .children(self.menu_overlay(cx))
     }
 }

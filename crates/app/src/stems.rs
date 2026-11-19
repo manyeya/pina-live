@@ -74,9 +74,15 @@ impl Parts {
                 .iter()
                 .all(|w| m.about.stems.iter().any(|x| x.eq_ignore_ascii_case(w)))
         });
+        // Seconds a second of sound takes it: as Pina measured, for the models it knows; else
+        // guessed from its file (a quarter-gigabyte model takes about a second).
+        let pace = |m: &Model| {
+            separate::catalog::Known::named(&m.about.name)
+                .map_or(size(m) as f32 / 250e6, |k| k.speed)
+        };
         match self {
             Parts::All => fits.max_by_key(size),
-            _ => fits.min_by_key(size),
+            _ => fits.min_by(|a, b| pace(a).total_cmp(&pace(b))),
         }
     }
 }
@@ -148,25 +154,17 @@ impl Live {
         {
             let (progress, stop) = (progress.clone(), stop.clone());
             std::thread::spawn(move || {
-                let r = separate::separate(
+                // In pieces at once, on as many cores as there are; only what was asked for kept
+                // (the rest plays as the remainder). A failed one leaves what was there.
+                let r = pina_live_engine::part::part(
                     &file,
                     &model,
                     &out,
+                    parts.wants(),
+                    pina_live_engine::part::pieces(),
                     |p| progress.store(p.to_bits(), Ordering::Relaxed),
                     &stop,
-                )
-                .map(|_| ());
-                // Only what was asked for is kept; the rest plays as the remainder.
-                if r.is_ok() {
-                    for name in ["vocals", "drums", "bass"] {
-                        if !parts.wants().contains(&name) {
-                            let _ = std::fs::remove_file(out.join(format!("{name}.wav")));
-                        }
-                    }
-                }
-                if r.is_err() {
-                    let _ = std::fs::remove_dir_all(&out);
-                }
+                );
                 let _ = tx.send(r);
             });
         }
@@ -201,7 +199,20 @@ impl Live {
                         self.load_stems(d, id, cx);
                     }
                 }
+                // One at a time: parting as tracks load, the next deck's track that has none.
+                if self.settings.part_on_load {
+                    let next = (0..pina_live_engine::engine::DECKS).find_map(|d| {
+                        let t = self.decks[d].track.filter(|&t| t != id && !has_stems(t))?;
+                        let parts = self.decks[d].parts;
+                        parts.model().map(|_| (t, parts))
+                    });
+                    if let Some((t, parts)) = next {
+                        self.separate(t, parts, cx);
+                    }
+                }
             }
+            // Stopped or failed, it's left: not started again on its own.
+            Err(e) if e == "Stopped" => {}
             Err(e) => self.stem_note = Some(e),
         }
         cx.notify();
@@ -392,7 +403,17 @@ impl Live {
                                 .text_color(rgb(TEXT_4))
                                 .child("Load a track")
                                 .into_any_element(),
-                            _ => div().into_any_element(),
+                            _ => button("Get models…", true)
+                                .h(px(24.))
+                                .flex_none()
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(|live, _, _, cx| {
+                                        live.show_models = true;
+                                        cx.notify();
+                                    }),
+                                )
+                                .into_any_element(),
                         })
                         // Asked for more parts of a parted track: back to the parts it has.
                         .when(back, |d| {
