@@ -16,3 +16,5 @@ signalsmith-stretch = "0.1"
 # The formats a DJ's library has that Pina Studio doesn't read: AAC and ALAC in M4A, Ogg Vorbis.
 # Same version as pina-engine's, so its decoder reads them too.
 symphonia = { version = "0.6.1", default-features = false, features = ["isomp4", "aac", "alac", "ogg", "vorbis"] }
+
+[dev-dependencies]

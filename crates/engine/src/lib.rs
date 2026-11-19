@@ -13,6 +13,7 @@ pub mod library;
 pub mod mixer;
 pub mod output;
 pub mod record;
+pub mod stems;
 
 #[cfg(test)]
 mod tests;

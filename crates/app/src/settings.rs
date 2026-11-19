@@ -312,6 +312,8 @@ impl Live {
                     .child(section("DECKS"))
                     .child(line("Keylock on as tracks load", toggle(s.keylock, |s| s.keylock = !s.keylock, cx)))
                     .child(line("Don't load onto a playing deck", toggle(s.load_lock, |s| s.load_lock = !s.load_lock, cx)))
+                    .child(section("CONTROLLERS"))
+                    .child(self.midi_settings(cx))
                     .child(section("LIBRARY FOLDERS"))
                     .child(folders)
                     .child(
@@ -326,6 +328,78 @@ impl Live {
                             )),
                     ),
             )
+    }
+
+    /// The controllers found and every mapping (flip it, or let it go).
+    fn midi_settings(&self, cx: &mut Context<Self>) -> Div {
+        let (devices, maps) = self.midi.as_ref().map_or((Vec::new(), Vec::new()), |m| {
+            (m.devices.clone(), m.mappings())
+        });
+        let mut col = div().flex().flex_col();
+        col = col.child(
+            div()
+                .pb(px(6.))
+                .text_color(rgb(TEXT_3))
+                .child(match devices.is_empty() {
+                    true => "No MIDI controller connected.".to_string(),
+                    false => devices.join(", "),
+                }),
+        );
+        for (k, m) in maps.iter().enumerate() {
+            col = col.child(
+                div()
+                    .h(px(30.))
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .border_t_1()
+                    .border_color(rgb(LINE_SOFT))
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_color(rgb(TEXT_2))
+                            .child(m.target.name()),
+                    )
+                    .child(
+                        div()
+                            .font_family(MONO)
+                            .text_size(px(10.5))
+                            .text_color(rgb(TEXT_4))
+                            .child(m.message()),
+                    )
+                    .child(seg("Flip", m.invert, 22.0).on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |live, _, _, cx| {
+                            if let Some(midi) = &live.midi {
+                                midi.flip(k);
+                            }
+                            cx.notify();
+                        }),
+                    ))
+                    .child(icon_seg(Icon::Close, false, 22.0).on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |live, _, _, cx| {
+                            if let Some(midi) = &live.midi {
+                                midi.forget(k);
+                            }
+                            cx.notify();
+                        }),
+                    )),
+            );
+        }
+        col.child(
+            div()
+                .pt(px(8.))
+                .flex()
+                .gap(px(8.))
+                .child(button("Learn…", false).on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|live, _, _, cx| {
+                        live.show_settings = false;
+                        live.set_learning(true, cx);
+                    }),
+                )),
+        )
     }
 
     fn set_xf_curve(&mut self, c: f32, cx: &mut Context<Self>) {

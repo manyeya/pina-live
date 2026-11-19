@@ -10,7 +10,7 @@ use crate::{
     ui::{scale::px, theme::*},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Ctl {
     Trim(usize),
     Eq(usize, usize),
@@ -175,6 +175,13 @@ pub fn pt(p: Point<Pixels>) -> (f32, f32) {
 
 impl Live {
     pub fn press_ctl(&mut self, ctl: Ctl, e: &MouseDownEvent, cx: &mut Context<Self>) {
+        let target = match ctl {
+            Ctl::Tempo(d) => crate::midi::Target::Tempo(d),
+            c => crate::midi::Target::Mix(c),
+        };
+        if self.arm(target, cx) {
+            return;
+        }
         if e.click_count >= 2 {
             let (_, _, rest) = match ctl {
                 Ctl::FxParam(u) => (0.0, 1.0, self.fx[u].settings.kind.param_rest()),
@@ -246,6 +253,19 @@ impl Live {
 
     /// A held button pressed.
     pub fn hold(&mut self, deck: usize, hold: Hold, cx: &mut Context<Self>) {
+        use crate::midi::Target;
+        let target = match hold {
+            Hold::Cue => Some(Target::Cue(deck)),
+            Hold::HotCue(k) => Some(Target::HotCue(deck, k)),
+            Hold::Roll(b) => Some(Target::Roll(deck, b)),
+            Hold::Censor => Some(Target::Censor(deck)),
+            Hold::Bend(_) => None,
+        };
+        if let Some(t) = target
+            && self.arm(t, cx)
+        {
+            return;
+        }
         let c = match hold {
             Hold::Cue => DeckCmd::Cue(true),
             Hold::HotCue(slot) => DeckCmd::HotCue { slot, down: true },

@@ -44,9 +44,9 @@ impl Live {
 
     pub fn mixer_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let order = self.channel_order();
-        let h = if self.four { PANEL_H_FOUR } else { PANEL_H };
+        let h = if self.narrow { PANEL_H_FOUR } else { PANEL_H };
         let half = order.len() / 2;
-        let knob_size = if self.four { 24.0 } else { 28.0 };
+        let knob_size = if self.narrow { 24.0 } else { 28.0 };
         let row = |label: &'static str,
                    ctl: &dyn Fn(usize) -> Ctl,
                    color: u32,
@@ -191,6 +191,9 @@ impl Live {
                         .on_mouse_down(
                             MouseButton::Left,
                             cx.listener(move |live, _, _, cx| {
+                                if live.arm(crate::midi::Target::Pfl(ch), cx) {
+                                    return;
+                                }
                                 let on = !live.mix.cue[ch];
                                 live.mix.cue[ch] = on;
                                 live.mixer(MixCmd::Cue { ch, on });
@@ -204,7 +207,7 @@ impl Live {
     }
 
     fn fader_row(&self, order: &[usize], half: usize, cx: &mut Context<Self>) -> Div {
-        let fh = if self.four { 64.0 } else { 82.0 };
+        let fh = if self.narrow { 64.0 } else { 82.0 };
         let mut r = div().flex().items_end().justify_between().pt(px(4.));
         for (k, &ch) in order.iter().enumerate() {
             if k == half {

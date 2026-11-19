@@ -64,7 +64,7 @@ impl Audio {
 }
 
 #[inline]
-fn hermite(x0: f32, x1: f32, x2: f32, x3: f32, t: f32) -> f32 {
+pub(crate) fn hermite(x0: f32, x1: f32, x2: f32, x3: f32, t: f32) -> f32 {
     let c1 = 0.5 * (x2 - x0);
     let c2 = x0 - 2.5 * x1 + 2.0 * x2 - 0.5 * x3;
     let c3 = 0.5 * (x3 - x0) + 1.5 * (x1 - x2);

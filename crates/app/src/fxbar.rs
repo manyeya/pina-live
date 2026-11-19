@@ -156,6 +156,9 @@ impl Live {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |live, _, _, cx| {
+                            if live.arm(crate::midi::Target::FxOn(u), cx) {
+                                return;
+                            }
                             live.fx[u].settings.on = !live.fx[u].settings.on;
                             live.send_fx(u);
                             cx.notify();
@@ -166,17 +169,21 @@ impl Live {
                 div()
                     .flex()
                     .flex_col()
-                    .child(dropdown(s.kind.name(), 26.0).w(px(124.)).on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |live, _, _, cx| {
-                            live.fx_menu = if live.fx_menu == Some(u) {
-                                None
-                            } else {
-                                Some(u)
-                            };
-                            cx.notify();
-                        }),
-                    ))
+                    .child(
+                        dropdown(s.kind.name(), 26.0)
+                            .w(px(if self.narrow { 104. } else { 124. }))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |live, _, _, cx| {
+                                    live.fx_menu = if live.fx_menu == Some(u) {
+                                        None
+                                    } else {
+                                        Some(u)
+                                    };
+                                    cx.notify();
+                                }),
+                            ),
+                    )
                     .when(open, |d| {
                         d.child(deferred(anchored().snap_to_window().child(menu)).with_priority(1))
                     }),
@@ -195,8 +202,12 @@ impl Live {
                     )
                     .child(step(1, "▶", cx)),
             )
-            .child(self.knob_row(Ctl::FxLevel(u), "LEVEL", cx))
-            .child(self.knob_row(Ctl::FxParam(u), s.kind.param_name(), cx))
+            .child(self.knob_row(Ctl::FxLevel(u), if self.narrow { "" } else { "LEVEL" }, cx))
+            .child(self.knob_row(
+                Ctl::FxParam(u),
+                if self.narrow { "" } else { s.kind.param_name() },
+                cx,
+            ))
             .child(div().flex_1())
             .child(tray().children((0..self.shown()).map(|d| {
                 let deck = self.channel_order()[d];
@@ -210,6 +221,9 @@ impl Live {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |live, _, _, cx| {
+                            if live.arm(crate::midi::Target::FxAssign(u, deck), cx) {
+                                return;
+                            }
                             let on = !live.fx[u].on[deck];
                             live.fx[u].on[deck] = on;
                             live.remote.fx(FxCmd::Assign {

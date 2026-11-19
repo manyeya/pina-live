@@ -5,9 +5,12 @@ mod browser;
 mod controls;
 mod decks;
 mod fxbar;
+mod keys;
 mod live;
+mod midi;
 mod mixer;
 mod settings;
+mod stems;
 #[cfg(test)]
 mod tests;
 mod top;

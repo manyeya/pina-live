@@ -443,3 +443,87 @@ fn sync_holds_a_looping_keylocked_leader() {
     assert!(worst < 0.01, "phase held: {worst}");
     assert!((speed - 1.0).abs() < 0.001, "sync's hand: {speed}");
 }
+
+/// A tone's level in `x` (Goertzel).
+fn level_at(x: &[f32], f: f64) -> f64 {
+    let w = 2.0 * PI * f / RATE;
+    let (mut s1, mut s2) = (0.0, 0.0);
+    for &v in x {
+        let s0 = v as f64 + 2.0 * w.cos() * s1 - s2;
+        s2 = s1;
+        s1 = s0;
+    }
+    ((s1 * s1 + s2 * s2 - 2.0 * w.cos() * s1 * s2).sqrt() / x.len() as f64) * 2.0
+}
+
+/// Stems: a mix of four tones, each its own stem. Vocals muted, its tone goes and the rest stay;
+/// vocals alone (an acapella), only its tone; with keylock as without.
+#[test]
+fn stems_take_parts_out() {
+    use crate::stems::Stems;
+    let n = (6.0 * RATE) as usize;
+    let sine = |f: f64| -> Vec<f32> {
+        (0..n)
+            .map(|i| (2.0 * PI * f * i as f64 / RATE).sin() as f32 * 0.2)
+            .collect()
+    };
+    let (v, d, b, m) = (sine(880.0), sine(220.0), sine(55.0), sine(1760.0));
+    let mix: Vec<f32> = (0..n).map(|i| v[i] + d[i] + b[i] + m[i]).collect();
+    for keylock in [false, true] {
+        let (mut e, mut r) = engine(RATE);
+        load(
+            &mut r,
+            0,
+            Arc::new(Audio::new(mix.clone(), mix.clone())),
+            None,
+        );
+        let stems = Stems::from_parts([
+            [v.clone(), v.clone()],
+            [d.clone(), d.clone()],
+            [b.clone(), b.clone()],
+        ]);
+        r.deck(
+            0,
+            DeckCmd::Stems {
+                id: 1,
+                stems: Arc::new(stems),
+            },
+        );
+        r.deck(0, DeckCmd::Keylock(keylock));
+        r.deck(0, DeckCmd::Play);
+        let all = run(&mut e, &mut r, 1.0);
+        assert!(r.last.decks[0].stems);
+        r.deck(0, DeckCmd::StemGain { stem: 0, gain: 0.0 });
+        run(&mut e, &mut r, 0.2);
+        let no_vocals = run(&mut e, &mut r, 0.5);
+        for s in 1..4 {
+            r.deck(
+                0,
+                DeckCmd::StemGain {
+                    stem: s,
+                    gain: if s == 0 { 1.0 } else { 0.0 },
+                },
+            );
+        }
+        r.deck(0, DeckCmd::StemGain { stem: 0, gain: 1.0 });
+        run(&mut e, &mut r, 0.2);
+        let acapella = run(&mut e, &mut r, 0.5);
+        let tail = |x: &[f32]| x[x.len() / 2..].to_vec();
+        let (all, no_vocals, acapella) = (tail(&all), tail(&no_vocals), tail(&acapella));
+        let k = if keylock { "keylock" } else { "vinyl" };
+        assert!(level_at(&all, 880.0) > 0.15, "{k}: vocals in the mix");
+        assert!(
+            level_at(&no_vocals, 880.0) < 0.01,
+            "{k}: vocals out: {}",
+            level_at(&no_vocals, 880.0)
+        );
+        assert!(level_at(&no_vocals, 1760.0) > 0.15, "{k}: melody stays");
+        assert!(level_at(&acapella, 880.0) > 0.15, "{k}: acapella");
+        for f in [220.0, 55.0, 1760.0] {
+            assert!(
+                level_at(&acapella, f) < 0.01,
+                "{k}: {f} Hz out of the acapella"
+            );
+        }
+    }
+}

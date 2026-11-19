@@ -49,8 +49,12 @@ pub fn clock(seconds: f64, tenths: bool) -> String {
 
 impl Live {
     pub fn deck_panel(&self, i: usize, cx: &mut Context<Self>) -> impl IntoElement {
-        let four = self.four;
-        let h = if four { PANEL_H_FOUR } else { PANEL_H };
+        let four = self.narrow;
+        let h = if self.four || self.narrow {
+            PANEL_H_FOUR
+        } else {
+            PANEL_H
+        };
         let s = self.status().decks[i];
         div()
             .id(("deck", i))
@@ -235,7 +239,7 @@ impl Live {
             .child(
                 div()
                     .id(("overview", i))
-                    .h(px(if self.four { 30. } else { 38. }))
+                    .h(px(if self.narrow { 30. } else { 38. }))
                     .cursor_pointer()
                     .on_mouse_down(
                         MouseButton::Left,
@@ -318,7 +322,9 @@ impl Live {
                     let (x, y) = pt(e.position);
                     let c = b.center();
                     let a = (y - f32::from(c.y)).atan2(x - f32::from(c.x));
-                    live.deck(i, DeckCmd::Touch(true));
+                    if !live.act(i, DeckCmd::Touch(true)) {
+                        return;
+                    }
                     live.drag = Some(Drag::Platter { deck: i, angle: a });
                     cx.notify();
                 }),
@@ -434,20 +440,36 @@ impl Live {
             )
         };
         tray()
-            .child(tab(if self.four { "Cue" } else { "Hot Cue" }, Pads::HotCue, cx))
+            .child(tab(
+                if self.narrow { "Cue" } else { "Hot Cue" },
+                Pads::HotCue,
+                cx,
+            ))
             .child(tab("Loop", Pads::Loop, cx))
             .child(tab("Roll", Pads::Roll, cx))
-            .child(tab("Jump", Pads::Jump, cx))
+            .child(tab(
+                if self.narrow { "Jmp" } else { "Jump" },
+                Pads::Jump,
+                cx,
+            ))
+            .child(tab(
+                if self.narrow { "Stem" } else { "Stems" },
+                Pads::Stems,
+                cx,
+            ))
     }
 
     fn pads(&self, i: usize, s: &DeckStatus, cx: &mut Context<Self>) -> Div {
-        let h = if self.four { 27.0 } else { 34.0 };
-        let four = self.four;
+        let h = if self.narrow { 27.0 } else { 34.0 };
+        let four = self.narrow;
         let period = self.decks[i]
             .analysis
             .as_ref()
             .and_then(|a| a.grid)
             .map_or(0.5 * self.rate, |g| g.period(self.rate));
+        if self.decks[i].pads == Pads::Stems {
+            return self.stem_pads(i, s, h, cx);
+        }
         let mut rows = div().flex().flex_col().gap(px(5.));
         for row in 0..2 {
             let mut r = div().flex().gap(px(5.));
@@ -471,7 +493,7 @@ impl Live {
                             cx.listener(move |live, e: &MouseDownEvent, _, cx| {
                                 // Shift-click clears it.
                                 if e.modifiers.shift {
-                                    live.deck(i, DeckCmd::SetHotCue { slot: k, at: None });
+                                    live.act(i, DeckCmd::SetHotCue { slot: k, at: None });
                                 } else {
                                     live.hold(i, Hold::HotCue(k), cx);
                                 }
@@ -487,7 +509,7 @@ impl Live {
                             MouseButton::Left,
                             cx.listener(move |live, _, _, cx| {
                                 live.decks[i].loop_beats = b;
-                                live.deck(i, DeckCmd::AutoLoop(b));
+                                live.act(i, DeckCmd::AutoLoop(b));
                                 cx.notify();
                             }),
                         )
@@ -500,6 +522,7 @@ impl Live {
                                 cx.listener(move |live, _, _, cx| live.hold(i, Hold::Roll(b), cx)),
                             )
                     }
+                    Pads::Stems => unreachable!("drawn by stem_pads"),
                     Pads::Jump => {
                         let b = JUMPS[k];
                         let label =
@@ -507,7 +530,7 @@ impl Live {
                         pad(label, None, false, h).on_mouse_down(
                             MouseButton::Left,
                             cx.listener(move |live, _, _, cx| {
-                                live.deck(i, DeckCmd::BeatJump(b));
+                                live.act(i, DeckCmd::BeatJump(b));
                                 cx.notify();
                             }),
                         )
@@ -528,7 +551,7 @@ impl Live {
             seg(label, lit, 24.0).on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |live, _, _, cx| {
-                    live.deck(i, cmd());
+                    live.act(i, cmd());
                     cx.notify();
                 }),
             )
@@ -540,13 +563,13 @@ impl Live {
                     let b = (live.decks[i].loop_beats * by).clamp(1.0 / 32.0, 64.0);
                     live.decks[i].loop_beats = b;
                     if live.status().decks[i].loop_on {
-                        live.deck(i, DeckCmd::LoopScale(by));
+                        live.act(i, DeckCmd::LoopScale(by));
                     }
                     cx.notify();
                 }),
             )
         };
-        let four = self.four;
+        let four = self.narrow;
         tray()
             .when(!four, |t| {
                 t.child(btn("In", set_in, || DeckCmd::LoopIn, cx))
@@ -578,7 +601,7 @@ impl Live {
                         MouseButton::Left,
                         cx.listener(move |live, _, _, cx| {
                             let b = live.decks[i].loop_beats;
-                            live.deck(i, DeckCmd::AutoLoop(b));
+                            live.act(i, DeckCmd::AutoLoop(b));
                             cx.notify();
                         }),
                     ),
@@ -596,9 +619,9 @@ impl Live {
     fn tempo_column(&self, i: usize, s: &DeckStatus, cx: &mut Context<Self>) -> Div {
         let d = &self.decks[i];
         let range = d.range;
-        let fh = if self.four { 112.0 } else { 150.0 };
+        let fh = if self.narrow { 100.0 } else { 150.0 };
         div()
-            .w(px(if self.four { 42. } else { 56. }))
+            .w(px(if self.narrow { 42. } else { 56. }))
             .flex_none()
             .flex()
             .flex_col()
@@ -633,7 +656,7 @@ impl Live {
     fn transport(&self, i: usize, s: &DeckStatus, cx: &mut Context<Self>) -> Div {
         let d = &self.decks[i];
         let leader = self.leader() == Some(i);
-        let four = self.four;
+        let four = self.narrow;
         let size = if four { 34.0 } else { 40.0 };
         let round = move |label: Icon, on: bool, color: u32, held: bool| {
             div()
@@ -680,7 +703,7 @@ impl Live {
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(move |live, _, _, cx| {
-                        live.deck(i, DeckCmd::Play);
+                        live.act(i, DeckCmd::Play);
                         cx.notify();
                     }),
                 ),
@@ -692,7 +715,7 @@ impl Live {
                         MouseButton::Left,
                         cx.listener(move |live, _, _, cx| {
                             let on = !live.status().decks[i].sync;
-                            live.deck(i, DeckCmd::Sync(on));
+                            live.act(i, DeckCmd::Sync(on));
                             cx.notify();
                         }),
                     ),
@@ -715,12 +738,12 @@ impl Live {
                 cx.listener(move |live, _, _, cx| {
                     let on = !live.decks[i].keylock;
                     live.decks[i].keylock = on;
-                    live.deck(i, DeckCmd::Keylock(on));
+                    live.act(i, DeckCmd::Keylock(on));
                     cx.notify();
                 }),
             ))
             .when(!four, |t| t.child(self.key_buttons(i, s, cx)))
-            .when(!four, |t| {
+            .when(!self.four, |t| {
                 t.child(
                     seg("Slip", d.slip, 28.0)
                         .when(d.slip, |d| d.text_color(rgb(AMBER)))
@@ -729,13 +752,13 @@ impl Live {
                             cx.listener(move |live, _, _, cx| {
                                 let on = !live.decks[i].slip;
                                 live.decks[i].slip = on;
-                                live.deck(i, DeckCmd::Slip(on));
+                                live.act(i, DeckCmd::Slip(on));
                                 cx.notify();
                             }),
                         ),
                 )
             })
-            .when(!four, |t| {
+            .when(!self.four, |t| {
                 t.child(
                     seg("Rev", self.holding(i, Hold::Censor), 28.0).on_mouse_down(
                         MouseButton::Left,
@@ -758,7 +781,7 @@ impl Live {
                     } else {
                         (k + by).clamp(-12.0, 12.0)
                     };
-                    live.deck(i, DeckCmd::Key(next));
+                    live.act(i, DeckCmd::Key(next));
                     cx.notify();
                 }),
             )

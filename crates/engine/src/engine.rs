@@ -25,6 +25,7 @@ use crate::{
 #[derive(Debug)]
 pub enum Trash {
     Audio(Arc<Audio>),
+    Stems(Arc<crate::stems::Stems>),
     Fx(Box<Insert>),
 }
 
@@ -70,6 +71,8 @@ pub struct Engine {
     auto_leader: Option<usize>,
     quantize: bool,
     commands: Consumer<Command>,
+    /// A second way in, for a MIDI controller's thread: its jog and pads don't wait on the UI.
+    control: Consumer<Command>,
     status: Producer<Status>,
     trash: Producer<Trash>,
     bufs: Vec<[Vec<f32>; 2]>,
@@ -82,6 +85,7 @@ pub struct Engine {
 /// The UI's end.
 pub struct Remote {
     commands: Producer<Command>,
+    control: Option<Producer<Command>>,
     status: Consumer<Status>,
     trash: Consumer<Trash>,
     /// The latest status heard.
@@ -103,6 +107,11 @@ impl Remote {
     /// Sends a command; false if the engine's that far behind (it's dropped).
     pub fn send(&mut self, c: Command) -> bool {
         self.commands.push(c).is_ok()
+    }
+
+    /// The second way in (once): for a controller's own thread.
+    pub fn take_control(&mut self) -> Option<Producer<Command>> {
+        self.control.take()
     }
 
     pub fn take_peaks(&mut self) -> Peaks {
@@ -145,6 +154,7 @@ pub fn engine(rate: f64) -> (Engine, Remote) {
     let (cp, cc) = RingBuffer::new(1024);
     let (sp, sc) = RingBuffer::new(64);
     let (tp, tc) = RingBuffer::new(64);
+    let (mp, mc) = RingBuffer::new(1024);
     let engine = Engine {
         rate,
         decks: (0..DECKS).map(|_| Deck::new(rate)).collect(),
@@ -156,6 +166,7 @@ pub fn engine(rate: f64) -> (Engine, Remote) {
         auto_leader: None,
         quantize: true,
         commands: cc,
+        control: mc,
         status: sp,
         trash: tp,
         bufs: (0..DECKS)
@@ -167,6 +178,7 @@ pub fn engine(rate: f64) -> (Engine, Remote) {
     };
     let remote = Remote {
         commands: cp,
+        control: Some(mp),
         status: sc,
         trash: tc,
         last: Status::default(),
@@ -219,12 +231,14 @@ impl Engine {
     fn take_commands(&mut self) {
         // A bounded number a block, so a flood can't hold up the sound.
         for _ in 0..256 {
-            let Ok(c) = self.commands.pop() else { break };
+            let Ok(c) = self.control.pop().or_else(|_| self.commands.pop()) else {
+                break;
+            };
             match c {
                 Command::Deck(i, c) if i < DECKS => {
-                    if let Some(old) = self.decks[i].command(c) {
+                    for old in self.decks[i].command(c) {
                         // Freed by the UI; if it can't take it, freed here (rare, and safe).
-                        let _ = self.trash.push(Trash::Audio(old));
+                        let _ = self.trash.push(old);
                     }
                 }
                 Command::Deck(..) => {}

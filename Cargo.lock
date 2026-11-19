@@ -4450,11 +4450,15 @@ dependencies = [
 name = "pina-live"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "gpui-pre",
  "gpui-pre-apple",
  "gpui-pre-platform",
+ "midir",
  "pina-engine",
  "pina-live-engine",
+ "resvg",
+ "rtrb",
  "serde",
  "serde_json",
 ]

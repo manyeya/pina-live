@@ -73,7 +73,7 @@ impl Live {
 
     /// Every deck shown's waveform, one over another.
     pub fn waveforms(&self, shown: usize, cx: &mut Context<Self>) -> Div {
-        let h = if shown > 2 { 56.0 } else { 88.0 };
+        let h = self.wave_h;
         let order: Vec<usize> = match shown {
             2 => vec![0, 1],
             _ => vec![2, 0, 1, 3],

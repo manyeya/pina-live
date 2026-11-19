@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Pina Live under the hardened runtime: it loads no plugins and records no input, so it asks
+     for nothing more. -->
+<plist version="1.0">
+<dict>
+</dict>
+</plist>

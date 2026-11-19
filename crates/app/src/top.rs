@@ -93,6 +93,31 @@ impl Live {
                 d.child(div().text_size(px(11.)).text_color(rgb(TEXT_3)).child(note))
             })
             .child(self.record_button(cx))
+            .child({
+                let n = self.midi.as_ref().map_or(0, |m| m.devices.len());
+                seg(
+                    if n > 0 {
+                        format!("MIDI · {n}")
+                    } else {
+                        "MIDI".into()
+                    },
+                    self.learning,
+                    28.0,
+                )
+                .when(self.learning, |d| d.text_color(rgb(AMBER)))
+                .child(icon(Icon::MidiIn, 14.).text_color(rgb(if self.learning {
+                    AMBER
+                } else {
+                    TEXT_3
+                })))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|live, _, _, cx| {
+                        let on = !live.learning;
+                        live.set_learning(on, cx);
+                    }),
+                )
+            })
             .child(match &self.audio_note {
                 Some(note) => div()
                     .text_size(px(11.5))
@@ -116,6 +141,64 @@ impl Live {
                     }),
                 ),
             )
+    }
+
+    /// MIDI learn's bar: what to do, what's picked, what was mapped last.
+    pub fn learn_bar(&self, cx: &mut Context<Self>) -> Div {
+        let devices = self.midi.as_ref().map_or(0, |m| m.devices.len());
+        div()
+            .h(px(34.))
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .px(px(12.))
+            .bg(rgb(0x221c10))
+            .border_b_1()
+            .border_color(rgb(LINE))
+            .text_size(px(12.))
+            .child(
+                div()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(AMBER))
+                    .child("MIDI learn"),
+            )
+            .child(
+                div()
+                    .text_color(rgb(TEXT_2))
+                    .child(match (devices, self.armed) {
+                        (0, _) => "No controller found. Plug one in, then Look again.".to_string(),
+                        (_, None) => "Click a control on screen, then move it on your controller."
+                            .to_string(),
+                        (_, Some(t)) => match t {
+                            crate::midi::Target::Jog(_) => {
+                                format!("{}: touch the jog, then turn it.", t.name())
+                            }
+                            _ => format!("{}: now move it on your controller.", t.name()),
+                        },
+                    }),
+            )
+            .when_some(self.learned.clone(), |d, l| {
+                d.child(
+                    div()
+                        .font_family(MONO)
+                        .text_size(px(11.))
+                        .text_color(rgb(TEXT_3))
+                        .child(l),
+                )
+            })
+            .child(div().flex_1())
+            .child(button("Look again", false).h(px(24.)).on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|live, _, _, cx| {
+                    live.connect_midi(cx);
+                    cx.notify();
+                }),
+            ))
+            .child(button("Done", true).h(px(24.)).on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|live, _, _, cx| live.set_learning(false, cx)),
+            ))
     }
 
     /// Record: red while it runs, with how long and how big.

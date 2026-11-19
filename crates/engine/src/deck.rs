@@ -15,7 +15,9 @@ use signalsmith_stretch::Stretch;
 
 use crate::{
     audio::Audio,
+    engine::Trash,
     grid::{Grid, wrap_half},
+    stems::{STEMS, Stems},
 };
 
 pub const HOT_CUES: usize = 8;
@@ -113,6 +115,16 @@ pub enum DeckCmd {
     },
     SetLoop(Option<Loop>),
     Sync(bool),
+    /// The loaded track's stems (for track `id`, in case another's been loaded since).
+    Stems {
+        id: u64,
+        stems: Arc<Stems>,
+    },
+    /// A stem's level: vocals, drums, bass, melody (0 to 1).
+    StemGain {
+        stem: usize,
+        gain: f32,
+    },
 }
 
 /// A deck as the UI sees it, a snapshot every block.
@@ -151,6 +163,9 @@ pub struct DeckStatus {
     pub roll: bool,
     /// Where a loop being set by hand starts; NaN when none.
     pub loop_in: f64,
+    pub stems: bool,
+    /// Each stem's level, as asked.
+    pub stem_gain: [f32; STEMS],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -185,6 +200,10 @@ impl Head {
 pub struct Deck {
     rate: f64,
     audio: Option<Arc<Audio>>,
+    stems: Option<Arc<Stems>>,
+    /// Each stem's level as heard, gliding to what's asked.
+    stem_gain: [f32; STEMS],
+    stem_want: [f32; STEMS],
     id: u64,
     grid: Option<Grid>,
     playing: bool,
@@ -254,6 +273,9 @@ impl Deck {
         Deck {
             rate,
             audio: None,
+            stems: None,
+            stem_gain: [1.0; STEMS],
+            stem_want: [1.0; STEMS],
             id: 0,
             grid: None,
             playing: false,
@@ -335,8 +357,15 @@ impl Deck {
         self.pos
     }
 
-    /// Takes in a command; a track it replaces is handed back, to be let go off this thread.
-    pub fn command(&mut self, cmd: DeckCmd) -> Option<Arc<Audio>> {
+    /// Takes in a command; what it replaces (a track, its stems) is handed back, to be let go off
+    /// this thread.
+    pub fn command(&mut self, cmd: DeckCmd) -> Vec<Trash> {
+        let mut out = Vec::new();
+        self.take(cmd, &mut out);
+        out
+    }
+
+    fn take(&mut self, cmd: DeckCmd, out: &mut Vec<Trash>) {
         match cmd {
             DeckCmd::Load {
                 audio,
@@ -345,20 +374,29 @@ impl Deck {
                 cue,
                 hot,
             } => {
-                let old = self.audio.replace(audio);
+                out.extend(self.audio.replace(audio).map(Trash::Audio));
+                out.extend(self.stems.take().map(Trash::Stems));
                 self.id = id;
                 self.grid = grid;
                 self.cue = cue;
                 self.hot = hot;
                 self.reset_play(cue);
-                return old;
             }
             DeckCmd::Unload => {
                 self.reset_play(0.0);
                 self.id = 0;
                 self.grid = None;
-                return self.audio.take();
+                out.extend(self.audio.take().map(Trash::Audio));
+                out.extend(self.stems.take().map(Trash::Stems));
             }
+            DeckCmd::Stems { id, stems } => match id == self.id && self.audio.is_some() {
+                true => out.extend(self.stems.replace(stems).map(Trash::Stems)),
+                false => out.push(Trash::Stems(stems)),
+            },
+            DeckCmd::StemGain { stem, gain } if stem < STEMS => {
+                self.stem_want[stem] = gain.clamp(0.0, 1.0)
+            }
+            DeckCmd::StemGain { .. } => {}
             DeckCmd::Grid(g) => self.grid = g,
             DeckCmd::Play => {
                 if self.preview.take().is_some() {
@@ -374,7 +412,7 @@ impl Deck {
             }
             DeckCmd::Playing(on) => {
                 if on != self.playing() {
-                    self.command(DeckCmd::Play);
+                    self.take(DeckCmd::Play, out);
                 }
             }
             DeckCmd::Cue(down) => self.cue_button(down),
@@ -445,7 +483,7 @@ impl Deck {
             }
             DeckCmd::Brake(_) | DeckCmd::Spinback(_) => {}
             DeckCmd::BeatJump(beats) => match self.lp {
-                Some(lp) if lp.on => self.command(DeckCmd::LoopMove(beats)).map_or((), drop),
+                Some(lp) if lp.on => self.take(DeckCmd::LoopMove(beats), out),
                 _ => self.go(self.pos + beats * self.period()),
             },
             DeckCmd::AutoLoop(beats) => {
@@ -472,7 +510,7 @@ impl Deck {
                         self.loop_in = None;
                     }
                 }
-                None => self.command(DeckCmd::Reloop).map_or((), drop),
+                None => self.take(DeckCmd::Reloop, out),
             },
             DeckCmd::Reloop => match self.lp {
                 Some(lp) if lp.on => self.exit_loop(),
@@ -532,7 +570,6 @@ impl Deck {
                 }
             }
         }
-        None
     }
 
     fn reset_play(&mut self, at: f64) {
@@ -558,6 +595,8 @@ impl Deck {
         self.sync_bend = 1.0;
         self.key = 0.0;
         self.seam = None;
+        self.stem_want = [1.0; STEMS];
+        self.stem_gain = [1.0; STEMS];
     }
 
     /// The CDJ's cue button. Playing: back to the cue, stopped. Stopped: the cue set here (if it
@@ -837,9 +876,45 @@ impl Deck {
         }
     }
 
+    /// A frame as heard: through the stems at their levels, when there are stems and any is
+    /// turned down.
+    #[inline]
+    fn at(&self, audio: &Audio, i: isize) -> (f32, f32) {
+        match &self.stems {
+            Some(st) if self.stem_gain != [1.0; STEMS] => st.frame(audio, i, &self.stem_gain),
+            _ => audio.at(i),
+        }
+    }
+
+    /// Between frames (a 4-point Hermite curve), through the stems.
+    #[inline]
+    fn read(&self, audio: &Audio, pos: f64) -> (f32, f32) {
+        if self.stems.is_none() || self.stem_gain == [1.0; STEMS] {
+            return audio.read(pos);
+        }
+        let i = pos.floor();
+        let t = (pos - i) as f32;
+        let i = i as isize;
+        let (a, b, c, d) = (
+            self.at(audio, i - 1),
+            self.at(audio, i),
+            self.at(audio, i + 1),
+            self.at(audio, i + 2),
+        );
+        (
+            crate::audio::hermite(a.0, b.0, c.0, d.0, t),
+            crate::audio::hermite(a.1, b.1, c.1, d.1, t),
+        )
+    }
+
     /// A step: on as it was, or (a jump, or keylock coming or going) the old way out and the
     /// new way in, crossfaded.
     fn step(&mut self, audio: &Audio, l: &mut [f32], r: &mut [f32], v0: f64, v1: f64) {
+        // Stems glide to their levels a step at a time: a mute's a quick fade, not a click.
+        for k in 0..STEMS {
+            let d = self.stem_want[k] - self.stem_gain[k];
+            self.stem_gain[k] += d.clamp(-0.04, 0.04);
+        }
         let want = self.wants_stretch(v1);
         let jump = self.jump.take();
         let stretching = matches!(self.mode, Mode::Stretch(_));
@@ -886,9 +961,9 @@ impl Deck {
         let lp = self.lp.filter(|lp| lp.on);
         for k in 0..m {
             let v = v0 + (v1 - v0) * (k as f64 / m as f64);
-            let (mut a, mut b) = audio.read(self.pos);
+            let (mut a, mut b) = self.read(audio, self.pos);
             if let Some((at, left)) = self.seam {
-                let (ta, tb) = audio.read(at);
+                let (ta, tb) = self.read(audio, at);
                 let g = left as f32 / SEAM as f32;
                 a = a * (1.0 - g) + ta * g;
                 b = b * (1.0 - g) + tb * g;
@@ -918,16 +993,18 @@ impl Deck {
         let s = v.abs().clamp(STRETCH_MIN, STRETCH_MAX);
         let dir = if v < 0.0 { -1.0 } else { 1.0 };
         let semis = self.key + if self.keylock { 0.0 } else { 12.0 * s.log2() };
-        let head = &mut self.heads[h];
-        head.acc += s * m as f64;
-        let k = head.acc.floor() as usize;
-        head.acc -= k as f64;
+        let acc = self.heads[h].acc + s * m as f64;
+        let k = acc.floor() as usize;
+        self.heads[h].acc = acc - k as f64;
+        let mut read = self.heads[h].read;
         for i in 0..k {
-            let (a, b) = audio.at(head.read as isize);
+            let (a, b) = self.at(audio, read as isize);
             self.inbuf[2 * i] = a;
             self.inbuf[2 * i + 1] = b;
-            head.read += dir;
+            read += dir;
         }
+        let head = &mut self.heads[h];
+        head.read = read;
         head.st.set_transpose_factor_semitones(semis as f32, None);
         head.st
             .process(&self.inbuf[..2 * k], &mut self.outbuf[..2 * m]);
@@ -956,14 +1033,15 @@ impl Deck {
         let dir = if v < 0.0 { -1.0 } else { 1.0 };
         let semis = self.key + if self.keylock { 0.0 } else { 12.0 * s.log2() };
         let pre = self.pre;
-        let head = &mut self.heads[h];
-        head.read = (self.pos + dir * head.lag(s)).round();
+        let read = (self.pos + dir * self.heads[h].lag(s)).round();
         for i in 0..pre {
-            let at = head.read - dir * (pre - i) as f64;
-            let (a, b) = audio.at(at as isize);
+            let at = read - dir * (pre - i) as f64;
+            let (a, b) = self.at(audio, at as isize);
             self.inbuf[2 * i] = a;
             self.inbuf[2 * i + 1] = b;
         }
+        let head = &mut self.heads[h];
+        head.read = read;
         head.st.set_transpose_factor_semitones(semis as f32, None);
         head.st.seek(&self.inbuf[..2 * pre], s);
         head.acc = 0.0;
@@ -998,6 +1076,8 @@ impl Deck {
             loop_on: lp.is_some_and(|l| l.on),
             roll: self.roll,
             loop_in: self.loop_in.unwrap_or(nan),
+            stems: self.stems.is_some(),
+            stem_gain: self.stem_want,
         }
     }
 

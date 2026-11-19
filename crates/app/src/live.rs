@@ -86,6 +86,7 @@ pub enum Pads {
     Loop,
     Roll,
     Jump,
+    Stems,
 }
 
 /// A deck, as the window keeps it: what's loaded and the controls only the window knows.
@@ -190,6 +191,10 @@ pub struct Live {
     pub audio_note: Option<String>,
     pub decks: [DeckUi; DECKS],
     pub four: bool,
+    /// The decks drawn compact: four of them, or a window too narrow for two in full.
+    pub narrow: bool,
+    /// Each waveform's height, made to leave the library room in a short window.
+    pub wave_h: f32,
     pub mix: MixUi,
     pub fx: [crate::fxbar::FxUi; pina_live_engine::fx::UNITS],
     /// The FX unit whose effect menu is open.
@@ -205,6 +210,16 @@ pub struct Live {
     pub drag: Option<Drag>,
     pub settings: crate::settings::Settings,
     pub show_settings: bool,
+    /// A track being parted into stems, and the last thing that went wrong doing so.
+    pub separating: Option<crate::stems::Job>,
+    pub stem_note: Option<String>,
+    pub midi: Option<crate::midi::Midi>,
+    /// The engine's second way in, for the controllers' thread.
+    midi_out: std::sync::Arc<std::sync::Mutex<Option<rtrb::Producer<Command>>>>,
+    /// MIDI learn: on, the control picked to map, and what was mapped last.
+    pub learning: bool,
+    pub armed: Option<crate::midi::Target>,
+    pub learned: Option<String>,
     pub recording: Option<pina_live_engine::record::Recording>,
     /// The last recording's file, or why it failed.
     pub rec_note: Option<String>,
@@ -236,7 +251,157 @@ impl Live {
         live.audio_note = note;
         let fresh: Vec<u64> = live.lib.scan();
         live.queue_analysis(&fresh);
+        live.connect_midi(cx);
         live
+    }
+
+    /// Every MIDI input, listened to; what they do picked up here as it comes.
+    pub fn connect_midi(&mut self, cx: &mut Context<Self>) {
+        use futures::StreamExt;
+        let maps = match &self.midi {
+            Some(m) => m.mappings(),
+            None => crate::midi::load_maps(),
+        };
+        if let Some(p) = self.remote.take_control() {
+            self.midi_out = std::sync::Arc::new(std::sync::Mutex::new(Some(p)));
+        }
+        // The old connections close as the new ones take over.
+        self.midi = None;
+        let (midi, mut rx) = crate::midi::Midi::connect(self.midi_out.clone(), maps);
+        midi.learning
+            .store(self.learning, std::sync::atomic::Ordering::Relaxed);
+        self.midi = Some(midi);
+        cx.spawn(async move |this, cx| {
+            while let Some(ev) = rx.next().await {
+                if this.update(cx, |live, cx| live.midi_event(ev, cx)).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
+    pub fn set_learning(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.learning = on;
+        self.armed = None;
+        if let Some(m) = &self.midi {
+            m.learning.store(on, std::sync::atomic::Ordering::Relaxed);
+        }
+        cx.notify();
+    }
+
+    /// While learning, a control clicked is picked to map (true: the click's used up).
+    pub fn arm(&mut self, t: crate::midi::Target, cx: &mut Context<Self>) -> bool {
+        if !self.learning {
+            return false;
+        }
+        self.armed = Some(t);
+        cx.notify();
+        true
+    }
+
+    /// A deck command from the window's own controls (learning, it picks the control instead);
+    /// whether it was done.
+    pub fn act(&mut self, i: usize, c: DeckCmd) -> bool {
+        use crate::midi::Target;
+        if self.learning {
+            let t = match c {
+                DeckCmd::Play => Some(Target::Play(i)),
+                DeckCmd::Sync(_) => Some(Target::Sync(i)),
+                DeckCmd::Keylock(_) => Some(Target::Keylock(i)),
+                DeckCmd::Slip(_) => Some(Target::Slip(i)),
+                DeckCmd::AutoLoop(b) => Some(Target::AutoLoop(i, b)),
+                DeckCmd::LoopScale(f) if f < 1.0 => Some(Target::LoopHalve(i)),
+                DeckCmd::LoopScale(_) => Some(Target::LoopDouble(i)),
+                DeckCmd::Reloop => Some(Target::Reloop(i)),
+                DeckCmd::BeatJump(b) => Some(Target::BeatJump(i, b)),
+                DeckCmd::Touch(_) => Some(Target::Jog(i)),
+                _ => None,
+            };
+            if t.is_some() {
+                self.armed = t;
+            }
+            return false;
+        }
+        self.remote.deck(i, c);
+        true
+    }
+
+    fn midi_event(&mut self, ev: crate::midi::Event, cx: &mut Context<Self>) {
+        use crate::midi::{Event, Input, Target};
+        match ev {
+            Event::Raw {
+                device,
+                kind,
+                channel,
+                number,
+                value,
+            } => {
+                let (Some(t), Some(m)) = (self.armed, &self.midi) else {
+                    return;
+                };
+                // A button's let go, a knob's settling: only what moves it maps it.
+                if kind == crate::midi::Kind::Note && value == 0 {
+                    return;
+                }
+                let made = m.learn(&device, kind, channel, number, value, t);
+                self.learned = Some(format!(
+                    "{} ← {} ({device})",
+                    made.target.name(),
+                    made.message()
+                ));
+                // The jog learns its touch and its turning both: it stays picked.
+                if !matches!(t, Target::Jog(_)) {
+                    self.armed = None;
+                }
+            }
+            Event::Mapped(t, inp) => {
+                let press = inp == Input::Button(true);
+                let s = self.remote.last.decks;
+                match (t, inp) {
+                    (Target::Sync(d), _) if press => {
+                        self.remote.deck(d, DeckCmd::Sync(!s[d].sync));
+                    }
+                    (Target::Keylock(d), _) if press => {
+                        let on = !self.decks[d].keylock;
+                        self.decks[d].keylock = on;
+                        self.remote.deck(d, DeckCmd::Keylock(on));
+                    }
+                    (Target::Slip(d), _) if press => {
+                        let on = !self.decks[d].slip;
+                        self.decks[d].slip = on;
+                        self.remote.deck(d, DeckCmd::Slip(on));
+                    }
+                    (Target::Tempo(d), Input::Value(v)) => Ctl::Tempo(d).set(self, v * 2.0 - 1.0),
+                    (Target::Mix(c), Input::Value(v)) => {
+                        let (lo, hi, _) = c.range();
+                        let v = if (v - 0.5).abs() < 0.008 { 0.5 } else { v };
+                        c.set(self, lo + v * (hi - lo));
+                    }
+                    (Target::Pfl(ch), _) if press => {
+                        let on = !self.mix.cue[ch];
+                        self.mix.cue[ch] = on;
+                        self.mixer(MixCmd::Cue { ch, on });
+                    }
+                    (Target::FxOn(u), _) if press => {
+                        self.fx[u].settings.on = !self.fx[u].settings.on;
+                        self.send_fx(u);
+                    }
+                    (Target::FxAssign(u, ch), _) if press => {
+                        let on = !self.fx[u].on[ch];
+                        self.fx[u].on[ch] = on;
+                        self.remote
+                            .fx(pina_live_engine::fx::FxCmd::Assign { unit: u, ch, on });
+                    }
+                    (Target::BrowseScroll, Input::Delta(t)) => {
+                        self.browse_by(t.signum() as isize, cx)
+                    }
+                    (Target::BrowseLoad(d), _) if press => self.load_selected(d, cx),
+                    _ => {}
+                }
+            }
+        }
+        cx.notify();
     }
 
     /// The window over an engine `remote` drives (run here if it's `offline`).
@@ -262,6 +427,8 @@ impl Live {
             audio_note: None,
             decks: std::array::from_fn(|_| DeckUi::new()),
             four: false,
+            narrow: false,
+            wave_h: 88.0,
             mix: MixUi::default(),
             fx: Default::default(),
             fx_menu: None,
@@ -275,6 +442,13 @@ impl Live {
             drag: None,
             settings: crate::settings::Settings::load(),
             show_settings: false,
+            separating: None,
+            stem_note: None,
+            midi: None,
+            midi_out: Default::default(),
+            learning: false,
+            armed: None,
+            learned: None,
             recording: None,
             rec_note: None,
             meters: [[0.0; 2]; DECKS + 1],
@@ -351,6 +525,10 @@ impl Live {
             changed = true;
         }
         self.fall_meters();
+        if self.separating.is_some() {
+            self.poll_separation(cx);
+            changed = true;
+        }
         for (id, found) in self.analyzer.poll() {
             self.analysed(id, found);
             changed = true;
@@ -486,6 +664,9 @@ impl Live {
             },
         );
         self.send_gain(deck);
+        if crate::stems::has_stems(id) {
+            self.load_stems(deck, id, cx);
+        }
         // The pitch fader as it's set carries on to the new track.
         self.deck(deck, DeckCmd::Tempo(1.0 + self.decks[deck].fader));
         cx.notify();
@@ -759,6 +940,12 @@ impl Live {
     }
 }
 
+impl Live {
+    pub fn focus_handle_ref(&self) -> &FocusHandle {
+        &self.focus
+    }
+}
+
 impl Focusable for Live {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus.clone()
@@ -778,6 +965,22 @@ impl Render for Live {
             window.request_animation_frame();
         }
         let shown = self.shown();
+        let view = window.viewport_size();
+        let (w, h) = (f32::from(view.width), f32::from(view.height));
+        self.narrow = self.four || w < 1300.0;
+        // What's left for the waveforms once the bars, decks and a usable library are in.
+        let panel = if self.narrow {
+            crate::decks::PANEL_H_FOUR
+        } else {
+            crate::decks::PANEL_H
+        };
+        let spare = h
+            - 40.0
+            - panel
+            - crate::fxbar::FX_BAR_H
+            - 230.0
+            - if self.learning { 34.0 } else { 0.0 };
+        self.wave_h = (spare / shown as f32).clamp(40.0, if shown > 2 { 56.0 } else { 88.0 });
         div()
             .id("live")
             .relative()
@@ -790,6 +993,8 @@ impl Render for Live {
             .text_color(rgb(TEXT))
             .font_family(SANS)
             .text_size(px(12.))
+            .on_key_down(cx.listener(Self::key_down))
+            .on_key_up(cx.listener(Self::key_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_action(cx.listener(|live, _: &AddFolder, _, cx| live.pick_folder(cx)))
@@ -813,6 +1018,7 @@ impl Render for Live {
             .on_action(cx.listener(|live, _: &BrowseUp, _, cx| live.browse_by(-1, cx)))
             .on_action(cx.listener(|live, _: &BrowseDown, _, cx| live.browse_by(1, cx)))
             .child(self.top_bar(cx))
+            .when(self.learning, |d| d.child(self.learn_bar(cx)))
             .child(self.waveforms(shown, cx))
             .child(
                 div()

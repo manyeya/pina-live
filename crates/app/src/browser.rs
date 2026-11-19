@@ -375,7 +375,7 @@ impl Live {
                 div()
                     .text_size(px(11.))
                     .text_color(rgb(TEXT_4))
-                    .child("⇧← ⇧→ load A / B"),
+                    .child("Q P play · A L cue · Z , sync · 1–4 7–0 hot cues · ⇧← ⇧→ load"),
             )
     }
 

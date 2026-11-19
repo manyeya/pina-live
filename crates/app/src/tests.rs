@@ -36,6 +36,14 @@ fn shots() {
         .collect();
     let mut lib = Library::default();
     let ids: Vec<u64> = tracks.iter().map(|t| lib.add_file(t)).collect();
+    // PINA_LIVE_SHOT_STEMS: a folder of stems (vocals.wav…) to give deck B's track.
+    if let (Some(dir), Some(&id)) = (std::env::var_os("PINA_LIVE_SHOT_STEMS"), ids.get(1)) {
+        let to = crate::stems::stems_dir(id);
+        std::fs::create_dir_all(&to).unwrap();
+        for f in std::fs::read_dir(dir).unwrap().flatten() {
+            std::fs::copy(f.path(), to.join(f.file_name())).unwrap();
+        }
+    }
 
     let mut cx = gpui::HeadlessAppContext::with_platform(
         Arc::new(gpui_apple::AppleTextSystem::new()),
@@ -130,7 +138,15 @@ fn shots() {
         window
             .update(cx, |live, _, cx| {
                 live.deck(0, DeckCmd::AutoLoop(4.0));
-                live.decks[1].pads = crate::live::Pads::Loop;
+                live.decks[1].pads = match std::env::var_os("PINA_LIVE_SHOT_STEMS") {
+                    Some(_) => crate::live::Pads::Stems,
+                    None => crate::live::Pads::Loop,
+                };
+                live.deck(1, DeckCmd::StemGain { stem: 0, gain: 0.0 });
+                live.decks[0].pads = match page.as_str() {
+                    "parting" => crate::live::Pads::Stems,
+                    _ => crate::live::Pads::HotCue,
+                };
                 // FX 1: an echo on A; FX 2: a flanger on B.
                 use pina_live_engine::fx::{FxCmd, FxKind};
                 live.fx[0].settings.on = true;
