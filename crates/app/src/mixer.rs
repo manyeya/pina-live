@@ -89,7 +89,8 @@ impl Live {
             .h(px(h - XF_H - 8.0))
             .flex_none()
             .flex()
-            .items_start()
+            // Every strip as tall as the row: their feet level, whatever type's rounding does.
+            .items_stretch()
             .justify_center()
             .gap(px(8.))
             .child(probe(&self.probes, "mixer.strips"));
@@ -122,54 +123,23 @@ impl Live {
         // (padding, gaps and border), the sends and cue, the fader's top, its dB, and the gaps between.
         let fixed = match compact {
             true => 16.0 + 20.0 + 3.0 + 12.0 + 20.0 + 2.0 + 14.0 + 9.0 * 3.0,
-            false => 16.0 + 20.0 + 3.0 + 12.0 + 22.0 + 2.0 + 14.0 + 9.0 * 5.0,
+            false => 16.0 + 20.0 + 3.0 + 12.0 + 22.0 + 2.0 + 14.0 + 9.0 * 4.0,
         };
         let (sw, mw) = crate::layout::mixer_dims(self.view.0, self.four);
-        let tiers: &[(f32, f32, f32)] = match (compact, self.four) {
-            (false, _) => &[
-                (40., 60., 66.),
-                (38., 56., 62.),
-                (36., 52., 58.),
-                (34., 49., 54.),
-                (32., 46., 50.),
-                (30., 42., 46.),
-                (28., 38., 42.),
-                (26., 34., 38.),
-                (24., 30., 34.),
-            ],
-            (true, false) => &[
-                (32., 46., 50.),
-                (30., 42., 46.),
-                (28., 38., 42.),
-                (26., 34., 38.),
-                (24., 30., 34.),
-                (22., 26., 30.),
-                (20., 24., 26.),
-            ],
-            (true, true) => &[
-                (32., 44., 48.),
-                (30., 40., 44.),
-                (28., 36., 40.),
-                (26., 32., 34.),
-                (24., 30., 32.),
-                (22., 26., 28.),
-                (20., 24., 26.),
-            ],
-        };
-        let least = if compact { 64.0 } else { 80.0 };
-        // As big as the strip's height leaves its fader its throw, and its width the knobs room
-        // beside their names (and, full size, their scales' ends).
+        // The fader first, as on a mixer: a third of the strip (never under its least); the
+        // knobs share what's left, sized smoothly with it (trim smaller, the filter bigger
+        // than the EQ), as wide as the strip lets them sit beside their names.
         let (eq_cap, filter_cap) = match compact {
             true => (sw - 50.0, sw - 48.0),
             false => (sw - 70.0, sw - 66.0),
         };
-        let fits = |t: &(f32, f32, f32)| {
-            room - fixed - (t.0 + 3.0 * t.1 + t.2) >= least && t.1 <= eq_cap && t.2 <= filter_cap
-        };
-        let &(trim, eq, filter) = tiers
-            .iter()
-            .find(|t| fits(t))
-            .unwrap_or(tiers.last().unwrap());
+        let fader_least = (room * 0.32).max(if compact { 64.0 } else { 96.0 });
+        let share = (room - fixed - fader_least).max(0.0);
+        let eq = (share / 4.8)
+            .clamp(if compact { 18.0 } else { 22.0 }, eq_cap.max(18.0))
+            .floor();
+        let trim = (eq * 0.7).max(if compact { 16.0 } else { 18.0 }).floor();
+        let filter = (eq * 1.1).min(filter_cap.max(eq)).floor();
         // The master's strip but its meter: padding, its name, knob and level, two rules, its
         // peak and limiter lines, the headphones' panel (padding, border, its name, two knobs,
         // the mix's ends, the level, its gaps), and the gaps between.
@@ -350,7 +320,7 @@ impl Live {
             .flex()
             .flex_col()
             .items_center()
-            .gap(px(if compact { 3. } else { 5. }))
+            .gap(px(if compact { 3. } else { 4. }))
             .py(px(8.))
             .child(probe(&self.probes, format!("mixer.strips.strip{ch}")))
             .rounded(px(8.))

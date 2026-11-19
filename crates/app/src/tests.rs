@@ -690,6 +690,20 @@ fn layouts_fit() {
                     }
                 }
             }
+            // A channel's fader keeps near a third of its strip (a fifth in a small window),
+            // at every size: the knobs give way.
+            if let (Some(f), Some(st)) = (
+                probes.get("fader Fader(0)"),
+                probes.get("mixer.strips.strip0"),
+            ) {
+                let (f, st) = (f32::from(f.size.height), f32::from(st.size.height));
+                let least = if h < 800.0 { 0.2 } else { 0.28 };
+                if f < st * least {
+                    failures.push(format!(
+                        "{at}: channel A's fader is {f:.0} of its strip's {st:.0}"
+                    ));
+                }
+            }
             // The master's strip ends level with the channels' (no gap under it).
             let foot = |k: &str| probes.get(k).map(|b| f32::from(b.origin.y + b.size.height));
             if let (Some(m), Some(c)) = (foot("mixer.strips.master"), foot("mixer.strips.strip0"))
