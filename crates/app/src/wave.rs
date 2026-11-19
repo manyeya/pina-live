@@ -22,6 +22,10 @@ use crate::{
     ui::{scale::px, theme::*},
 };
 
+/// How much each band counts as drawn (lows, mids, highs): the lows the body, the mids and highs
+/// within it, as a three-band DJ waveform reads.
+pub const WEIGHTS: [f32; 3] = [2.4, 1.6, 1.9];
+
 pub const LOW: u32 = 0x3070f0;
 pub const MID: u32 = 0xf0a23c;
 pub const HIGH: u32 = 0xeef0f4;
@@ -30,6 +34,8 @@ pub const HIGH: u32 = 0xeef0f4;
 #[derive(Clone)]
 struct View {
     wave: Option<Arc<Wave>>,
+    /// What brings this track up to fill its lane.
+    fill: f32,
     /// Seconds.
     now: f64,
     len: f64,
@@ -52,6 +58,7 @@ impl Live {
         let r = self.rate;
         let d = &self.decks[i];
         View {
+            fill: d.wave.as_ref().map_or(1.0, |w| w.fill(WEIGHTS)),
             wave: d.wave.clone(),
             now: self.deck_seconds(i),
             len: s.len / r,
@@ -74,10 +81,7 @@ impl Live {
     /// Every deck shown's waveform, one over another.
     pub fn waveforms(&self, shown: usize, cx: &mut Context<Self>) -> Div {
         let h = self.wave_h;
-        let order: Vec<usize> = match shown {
-            2 => vec![0, 1],
-            _ => vec![2, 0, 1, 3],
-        };
+        let order: Vec<usize> = (0..shown).collect();
         let mut col = div().flex().flex_col().flex_none().bg(rgb(LANE));
         for (k, i) in order.into_iter().enumerate() {
             col = col.child(self.wave_row(i, h, k > 0, cx));
@@ -150,10 +154,33 @@ impl Live {
             .child(
                 div()
                     .id(("wave", i))
+                    .relative()
                     .flex_1()
                     .min_w(px(0.))
                     .h_full()
                     .cursor(gpui::CursorStyle::ResizeLeftRight)
+                    // A track dropped on the lane loads on its deck, as on the deck's card.
+                    .drag_over::<crate::browser::TrackDrag>(move |st, _, _, _| {
+                        st.bg(alpha(color, 0.12))
+                            .border_1()
+                            .border_color(rgb(color))
+                    })
+                    .drag_over::<gpui::ExternalPaths>(move |st, _, _, _| {
+                        st.bg(alpha(color, 0.12))
+                            .border_1()
+                            .border_color(rgb(color))
+                    })
+                    .on_drop(
+                        cx.listener(move |live, t: &crate::browser::TrackDrag, _, cx| {
+                            live.drop_on = None;
+                            live.load(i, t.id, cx);
+                        }),
+                    )
+                    .on_drop(
+                        cx.listener(move |live, paths: &gpui::ExternalPaths, _, cx| {
+                            live.dropped(Some(i), paths, cx)
+                        }),
+                    )
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |live, e: &MouseDownEvent, _, cx| {
@@ -179,7 +206,26 @@ impl Live {
                             move |b, _, window, cx| paint_scrolling(&view, b, window, cx),
                         )
                         .size_full(),
-                    ),
+                    )
+                    .when(!s.loaded, |d| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .inset_0()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .text_size(px(11.5))
+                                .text_color(rgb(TEXT_4))
+                                .child(match self.decks[i].loading {
+                                    Some(_) => format!("Reading the track onto {}…", DECK_NAMES[i]),
+                                    None => format!(
+                                        "Deck {} is empty: drag a track here",
+                                        DECK_NAMES[i]
+                                    ),
+                                }),
+                        )
+                    }),
             )
     }
 }
@@ -248,10 +294,11 @@ fn columns(cols: &[[u8; 4]], a: isize, b: isize) -> Option<[u8; 4]> {
     Some(m)
 }
 
-/// One column of waveform at `x`, `half` tall either side of `mid`.
-fn bands(window: &mut Window, x: f32, w: f32, mid: f32, half: f32, c: [u8; 4], a: f32) {
-    let hgt = |v: u8| (v as f32 / 255.0).min(1.0) * half;
-    let (lo, md, hi) = (hgt(c[1]), hgt(c[2]), hgt(c[3]));
+/// One column of waveform at `x`, `half` tall either side of `mid`: each band at its weight,
+/// brought up by `fill`, and eased (a power under one) so quiet detail still shows.
+fn bands(window: &mut Window, x: f32, w: f32, mid: f32, half: f32, c: [u8; 4], a: f32, fill: f32) {
+    let hgt = |v: u8, b: usize| (Wave::level(v) * WEIGHTS[b] * fill).min(1.0).powf(0.8) * half;
+    let (lo, md, hi) = (hgt(c[1], 0), hgt(c[2], 1) * 0.8, hgt(c[3], 2) * 0.6);
     quad(window, x, mid - lo, w, lo * 2.0, alpha(LOW, a));
     quad(window, x, mid - md, w, md * 2.0, alpha(MID, a));
     quad(window, x, mid - hi, w, hi * 2.0, alpha(HIGH, a));
@@ -264,7 +311,6 @@ fn paint_scrolling(v: &View, b: Bounds<Pixels>, window: &mut Window, cx: &mut Ap
     let half = h / 2.0 - 3.0;
     let center = x0 + (w / 2.0).round();
     if !v.loaded {
-        quad(window, x0, mid, w, 1.0, rgb(LINE));
         return;
     }
     let speed = v.tempo.abs().max(0.05);
@@ -304,7 +350,7 @@ fn paint_scrolling(v: &View, b: Bounds<Pixels>, window: &mut Window, cx: &mut Ap
             let c0 = (t0 * WAVE_PER_SECOND).floor() as isize;
             let c1 = (((t0 + per_px) * WAVE_PER_SECOND).floor() as isize).max(c0 + 1);
             if let Some(c) = columns(cols, c0, c1) {
-                bands(window, x0 + k as f32, 1.0, mid, half, c, 1.0);
+                bands(window, x0 + k as f32, 1.0, mid, half, c, 1.0, v.fill);
             }
         }
     }
@@ -436,6 +482,7 @@ fn paint_overview(v: &View, b: Bounds<Pixels>, window: &mut Window, cx: &mut App
                     half,
                     c,
                     if played { 0.4 } else { 0.95 },
+                    v.fill,
                 );
             }
         }

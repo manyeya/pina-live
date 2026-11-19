@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::{dsp::Split, grid::Grid};
 
 /// Bumped when what's worked out changes, so old analyses are done again.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct Tags {
@@ -186,13 +186,36 @@ pub fn compatible(a: &str, b: &str) -> bool {
 pub const WAVE_PER_SECOND: f64 = 150.0;
 
 /// A track's waveform: a column every 1/150 s, each its peak and its lows', mids' and highs'
-/// loudness (RMS), 0 to 255.
+/// loudness (RMS), stored as square roots (0 to 255) so quiet detail keeps its steps. How it's
+/// drawn (each band's weight, the track brought up to fill its lane) is the drawing's business,
+/// so it can change without analysing again.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Wave {
     pub cols: Vec<[u8; 4]>,
 }
 
 impl Wave {
+    /// A stored value back to a level, 0 to 1.
+    pub fn level(v: u8) -> f32 {
+        let x = v as f32 / 255.0;
+        x * x
+    }
+
+    /// What brings the track up to fill its lane: one over the loudest a band gets anywhere in
+    /// it (weighted as drawn), within reason.
+    pub fn fill(&self, weights: [f32; 3]) -> f32 {
+        let most = self
+            .cols
+            .iter()
+            .map(|c| {
+                (1..4)
+                    .map(|b| Wave::level(c[b]) * weights[b - 1])
+                    .fold(0f32, f32::max)
+            })
+            .fold(0f32, f32::max);
+        (1.0 / most.max(1e-3)).min(12.0)
+    }
+
     pub fn of(l: &[f32], r: &[f32], rate: f64) -> Wave {
         let mut a = Split::new(crate::dsp::LOW_MID, rate);
         let mut b = Split::new(crate::dsp::MID_HIGH, rate);
@@ -214,13 +237,12 @@ impl Wave {
                 hi += h * h;
                 i += 1;
             }
-            let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
-            // Bands' RMS scaled up a little to sit near the peak's height.
+            let q = |v: f32| (v.clamp(0.0, 1.0).sqrt() * 255.0).round() as u8;
             cols.push([
                 q(peak),
-                q((lo / n).sqrt() * 1.9),
-                q((mid / n).sqrt() * 2.2),
-                q((hi / n).sqrt() * 2.6),
+                q((lo / n).sqrt()),
+                q((mid / n).sqrt()),
+                q((hi / n).sqrt()),
             ]);
         }
         Wave { cols }
@@ -284,6 +306,14 @@ mod tests {
         let w = Wave::of(&x, &x, rate);
         assert_eq!(w.cols.len(), 150);
         assert!(w.cols.iter().all(|c| c[0] > 100 && c[1] > c[3]));
+        // Quiet or loud, it's brought up to fill its lane.
+        let f = w.fill([1.0; 3]);
+        let top = w
+            .cols
+            .iter()
+            .map(|c| Wave::level(c[1]) * f)
+            .fold(0f32, f32::max);
+        assert!((top - 1.0).abs() < 1e-3);
         assert_eq!(Wave::from_bytes(&w.to_bytes()), Some(w));
     }
 }

@@ -56,6 +56,12 @@ pub enum Drag {
         deck: usize,
         hold: Hold,
     },
+    /// An edge between panels: where the pointer was, and the size then.
+    Resize {
+        edge: crate::layout::Edge,
+        from: f32,
+        value: f32,
+    },
 }
 
 impl Ctl {
@@ -235,6 +241,13 @@ impl Live {
                 self.deck(deck, DeckCmd::Scratch(turns));
                 self.drag = Some(Drag::Wave { deck, x });
             }
+            Some(Drag::Resize { edge, from, value }) => {
+                let by = match edge {
+                    crate::layout::Edge::Side => x - from,
+                    _ => y - from,
+                };
+                self.resize(edge, value, by);
+            }
             Some(Drag::Hold { .. }) | None => return,
         }
         cx.notify();
@@ -246,6 +259,7 @@ impl Live {
                 self.deck(deck, DeckCmd::Touch(false))
             }
             Drag::Hold { deck, hold } => self.release(deck, hold),
+            Drag::Resize { .. } => self.settings.save(),
             Drag::Ctl { .. } => {}
         }
         cx.notify();

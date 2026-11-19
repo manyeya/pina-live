@@ -12,7 +12,7 @@ use std::{
     time::Instant,
 };
 
-use gpui::{Context, Div, FontWeight, MouseButton, div, prelude::*, rgb};
+use gpui::{Context, Div, MouseButton, div, prelude::*, rgb};
 use pina_engine::separate::{self, Model};
 use pina_live_engine::{
     deck::{DeckCmd, DeckStatus},
@@ -66,6 +66,19 @@ pub struct Job {
 }
 
 impl Job {
+    /// One that's a part of the way through and stays there (tests).
+    #[cfg(test)]
+    pub fn stuck(id: u64, at: f32) -> Job {
+        Job {
+            id,
+            model: "BS-RoFormer SW".into(),
+            started: Instant::now(),
+            progress: Arc::new(AtomicU32::new(at.to_bits())),
+            stop: Arc::default(),
+            done: channel().1,
+        }
+    }
+
     pub fn progress(&self) -> f32 {
         f32::from_bits(self.progress.load(Ordering::Relaxed))
     }
@@ -177,7 +190,7 @@ impl Live {
     pub fn stem_pads(&self, i: usize, s: &DeckStatus, h: f32, cx: &mut Context<Self>) -> Div {
         if s.stems {
             let g = s.stem_gain;
-            let mut top = div().flex().gap(px(5.));
+            let mut top = div().flex().gap(px(6.));
             for k in 0..STEMS {
                 let on = g[k] > 0.5;
                 top = top.child(
@@ -222,7 +235,7 @@ impl Live {
             let four = self.narrow;
             let bottom = div()
                 .flex()
-                .gap(px(5.))
+                .gap(px(6.))
                 .child(preset(
                     if four { "Vox" } else { "Acapella" },
                     [1.0, 0.0, 0.0, 0.0],
@@ -239,140 +252,148 @@ impl Live {
                     cx,
                 ))
                 .child(preset("All", [1.0; STEMS], cx));
-            return div().flex().flex_col().gap(px(5.)).child(top).child(bottom);
+            return div().flex().flex_col().gap(px(6.)).child(top).child(bottom);
         }
         let id = self.decks[i].track;
         let mine = self.separating.as_ref().filter(|j| Some(j.id) == id);
         let busy_other = self.separating.is_some() && mine.is_none();
-        let box_ = div()
-            .h(px(h * 2.0 + 5.0))
+        // The box is exactly the pads' two rows; each line in it is one line (cut short with an
+        // ellipsis, never wrapped), and in a short box only the button's left.
+        let bh = h * 2.0 + 6.0;
+        let roomy = bh >= 62.0;
+        let line = |text: String, color: u32| {
+            div()
+                .h(px(16.))
+                .line_height(px(16.))
+                .w_full()
+                .min_w(px(0.))
+                .whitespace_nowrap()
+                .overflow_hidden()
+                .text_ellipsis()
+                .text_color(rgb(color))
+                .child(text)
+        };
+        // The box, and what's in it (measured on its own, so the tests see it if it's too much
+        // for the box: the box clips it, so it'd otherwise just vanish).
+        let outer = div()
+            .relative()
+            .h(px(bh))
+            .flex_none()
+            .overflow_hidden()
             .flex()
             .flex_col()
             .justify_center()
-            .gap(px(6.))
             .px(px(10.))
             .rounded(px(6.))
             .border_1()
             .border_color(rgb(LINE))
-            .bg(rgb(CARD));
+            .bg(rgb(CARD))
+            .child(crate::probe::probe(
+                &self.probes,
+                format!("deck{i}.body.mid.stems"),
+            ));
+        let box_ = div()
+            .relative()
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .child(crate::probe::probe(
+                &self.probes,
+                format!("deck{i}.body.mid.stems.content"),
+            ));
+        let end = div();
         if !separate::available() {
-            return box_.child(
-                div()
-                    .text_color(rgb(TEXT_3))
-                    .child("Stems need a Mac with Apple silicon, or Windows on x64."),
+            return outer.child(
+                box_.child(line(
+                    "Stems need Apple silicon, or Windows on x64".into(),
+                    TEXT_3,
+                ))
+                .child(end),
             );
         }
         if let Some(job) = mine {
             let p = job.progress();
-            return box_
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .child(
-                            div()
-                                .text_color(rgb(TEXT_2))
-                                .child(format!("Parting it · {}", job.model)),
-                        )
-                        .child(
-                            div()
-                                .font_family(MONO)
-                                .text_size(px(11.))
-                                .text_color(rgb(TEXT_3))
-                                .child({
-                                    let gone = job.started.elapsed().as_secs_f64();
-                                    // Time left at the pace so far, once there's a pace to go by.
-                                    let left =
-                                        (p > 0.02).then(|| gone * (1.0 - p as f64) / p as f64);
-                                    match left {
-                                        Some(l) => format!(
-                                            "{:.0}%  ·  about {} left",
-                                            p * 100.0,
-                                            crate::decks::clock(l, false)
-                                        ),
-                                        None => format!(
-                                            "{:.0}%  ·  {}",
-                                            p * 100.0,
-                                            crate::decks::clock(gone, false)
-                                        ),
-                                    }
+            let gone = job.started.elapsed().as_secs_f64();
+            // Time left at the pace so far, once there's a pace to go by.
+            let left = (p > 0.02).then(|| gone * (1.0 - p as f64) / p as f64);
+            let said = match left {
+                Some(l) => format!(
+                    "Parting · {:.0}% · about {} left",
+                    p * 100.0,
+                    crate::decks::clock(l, false)
+                ),
+                None => format!(
+                    "Parting · {:.0}% · {}",
+                    p * 100.0,
+                    crate::decks::clock(gone, false)
+                ),
+            };
+            return outer.child(
+                box_.when(roomy, |d| d.child(line(said, TEXT_2)))
+                    .child(
+                        div()
+                            .h(px(22.))
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .h(px(4.))
+                                    .rounded(px(2.))
+                                    .bg(rgb(RAISED))
+                                    .child(
+                                        div()
+                                            .h_full()
+                                            .w(gpui::relative(p.clamp(0.0, 1.0)))
+                                            .rounded(px(2.))
+                                            .bg(rgb(PINK)),
+                                    ),
+                            )
+                            .child(button("Stop", false).h(px(22.)).on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|live, _, _, cx| {
+                                    live.stop_separating();
+                                    cx.notify();
                                 }),
-                        ),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(8.))
-                        .child(
-                            div()
-                                .flex_1()
-                                .h(px(4.))
-                                .rounded(px(2.))
-                                .bg(rgb(RAISED))
-                                .child(
-                                    div()
-                                        .h_full()
-                                        .w(gpui::relative(p.clamp(0.0, 1.0)))
-                                        .rounded(px(2.))
-                                        .bg(rgb(PINK)),
-                                ),
-                        )
-                        .child(button("Stop", false).h(px(22.)).on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(|live, _, _, cx| {
-                                live.stop_separating();
-                                cx.notify();
-                            }),
-                        )),
-                );
+                            )),
+                    )
+                    .child(end),
+            );
         }
         let model = best_model();
-        box_.child(
-            div()
-                .text_color(rgb(TEXT_2))
-                .font_weight(FontWeight::MEDIUM)
-                .child(match &model {
-                    Some(_) => "Part this track into vocals, drums, bass and melody",
-                    None => "No separation model yet",
-                }),
-        )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(8.))
+        let say = match (&self.stem_note, &model) {
+            (Some(n), _) => (n.clone(), RECORD),
+            (None, Some(_)) => ("Vocals, drums, bass and melody, apart".to_string(), TEXT_2),
+            (None, None) => ("No separation model yet".to_string(), TEXT_2),
+        };
+        outer.child(
+            box_.when(roomy, |d| d.child(line(say.0, say.1)))
                 .child(match (&model, id) {
-                (Some(m), Some(id)) => button(
-                    if busy_other {
-                        "Waiting for another track…".to_string()
-                    } else {
-                        format!("Separate · {}", m.about.name)
-                    },
-                    !busy_other,
-                )
-                .h(px(24.))
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |live, _, _, cx| live.separate(id, cx)),
-                )
-                .into_any_element(),
-                (None, _) => div()
-                    .text_size(px(11.))
-                    .text_color(rgb(TEXT_3))
-                    .child(
-                        "Add one in Pina Studio › Settings › Stem models; Pina Live uses the same.",
+                    (Some(m), Some(id)) => button(
+                        match (busy_other, self.narrow) {
+                            (true, _) => "Waiting for another track…".to_string(),
+                            (false, true) => "Separate".to_string(),
+                            (false, false) => format!("Separate · {}", m.about.name),
+                        },
+                        !busy_other,
+                    )
+                    .h(px(24.))
+                    .max_w_full()
+                    .overflow_hidden()
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |live, _, _, cx| live.separate(id, cx)),
                     )
                     .into_any_element(),
-                _ => div()
-                    .text_color(rgb(TEXT_4))
-                    .child("Load a track first")
+                    (None, _) => line(
+                        "Add one in Pina Studio › Settings › Stem models".into(),
+                        TEXT_3,
+                    )
                     .into_any_element(),
-            }),
+                    _ => line("Load a track first".into(), TEXT_4).into_any_element(),
+                })
+                .child(end),
         )
-        .when_some(self.stem_note.clone(), |d, n| {
-            d.child(div().text_size(px(11.)).text_color(rgb(RECORD)).child(n))
-        })
     }
 }

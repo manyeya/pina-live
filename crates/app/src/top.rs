@@ -63,6 +63,34 @@ impl Live {
                         ),
                 ),
             )
+            // The library: open under the decks, shut, or the whole window.
+            .child({
+                let lib = self.settings.layout.library;
+                use crate::layout::LibView;
+                let open = match lib {
+                    LibView::Open => LibView::Closed,
+                    _ => LibView::Open,
+                };
+                let full = match lib {
+                    LibView::Full => LibView::Open,
+                    _ => LibView::Full,
+                };
+                tray()
+                    .child(
+                        seg("Library", lib == LibView::Open, 26.0)
+                            .child(icon(Icon::PanelBottom, 13.).text_color(rgb(TEXT_3)))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |live, _, _, cx| live.set_library(open, cx)),
+                            ),
+                    )
+                    .child(
+                        icon_seg(Icon::Expand, lib == LibView::Full, 26.0).on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |live, _, _, cx| live.set_library(full, cx)),
+                        ),
+                    )
+            })
             .child(match lead {
                 Some(l) => div()
                     .flex()
@@ -141,6 +169,114 @@ impl Live {
                     }),
                 ),
             )
+    }
+
+    /// The library full screen: every deck on a line along the top (what's on, its tempo, its
+    /// time left, play and cue), so the set carries on while the next track's found.
+    pub fn now_playing(&self, cx: &mut Context<Self>) -> Div {
+        let cell = |i: usize, cx: &mut Context<Self>| {
+            let s = self.status().decks[i];
+            let d = &self.decks[i];
+            let color = crate::live::DECK_COLORS[i];
+            let left = (s.len - s.pos).max(0.0) / self.rate;
+            div()
+                .flex_1()
+                .min_w(px(0.))
+                .h_full()
+                .flex()
+                .items_center()
+                .gap(px(10.))
+                .px(px(12.))
+                .when(i > 0, |d| d.border_l_1().border_color(rgb(LINE)))
+                .child(
+                    div()
+                        .size(px(22.))
+                        .flex_none()
+                        .rounded(px(5.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(alpha(color, 0.16))
+                        .text_color(rgb(color))
+                        .font_weight(FontWeight::BOLD)
+                        .child(crate::live::DECK_NAMES[i]),
+                )
+                .child(
+                    div()
+                        .size(px(30.))
+                        .flex_none()
+                        .rounded(px(15.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .border_2()
+                        .border_color(rgb(if s.playing { MINT } else { LINE_STRONG }))
+                        .cursor_pointer()
+                        .child(
+                            icon(if s.playing { Icon::Pause } else { Icon::Play }, 13.)
+                                .text_color(rgb(if s.playing { MINT } else { TEXT_2 })),
+                        )
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |live, _, _, cx| {
+                                live.act(i, pina_live_engine::deck::DeckCmd::Play);
+                                cx.notify();
+                            }),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.))
+                        .whitespace_nowrap()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .text_color(rgb(if d.track.is_some() { TEXT } else { TEXT_4 }))
+                        .child(match d.track {
+                            Some(_) => d.title.clone(),
+                            None => "Empty".into(),
+                        }),
+                )
+                .when(s.loaded, |r| {
+                    r.child(
+                        div()
+                            .font_family(MONO)
+                            .text_color(rgb(if s.sync { ACCENT_TEXT } else { TEXT_2 }))
+                            .child(format!("{:.2}", s.bpm)),
+                    )
+                    .child(
+                        div()
+                            .font_family(MONO)
+                            .text_color(rgb(if s.playing && left < 30.0 {
+                                RECORD
+                            } else {
+                                TEXT_3
+                            }))
+                            .child(crate::decks::clock(-left, false)),
+                    )
+                })
+        };
+        let mut row = div()
+            .h(px(48.))
+            .flex_none()
+            .flex()
+            .items_center()
+            .bg(rgb(SURFACE))
+            .border_b_1()
+            .border_color(rgb(LINE));
+        for i in 0..self.shown() {
+            row = row.child(cell(i, cx));
+        }
+        row.child(
+            div()
+                .px(px(12.))
+                .child(button("Back to the decks", false).on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|live, _, _, cx| {
+                        live.set_library(crate::layout::LibView::Open, cx)
+                    }),
+                )),
+        )
     }
 
     /// MIDI learn's bar: what to do, what's picked, what was mapped last.

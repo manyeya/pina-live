@@ -17,18 +17,63 @@ use pina_live_engine::grid::Grid;
 use crate::{
     controls::{Ctl, Drag, Hold, pad, pt},
     live::{CUE_COLORS, DECK_COLORS, DECK_NAMES, Live, Pads},
+    probe::{mark, probe},
     ui::{scale::px, theme::*},
 };
 
-/// The deck cards' and the mixer's height: in full, and compact (four decks, or a narrow window).
+/// The deck cards' and the mixer's height as they start (the layout's default; dragged to size).
 pub const PANEL_H: f32 = 442.0;
-pub const PANEL_H_FOUR: f32 = 360.0;
 /// The space round the cards and between them.
 pub const GAP: f32 = 10.0;
 
-/// A section's caption: "PADS", "LOOP", "TEMPO".
+/// A card's fixed parts: its header, the overview (or grid tools), the transport; compact and
+/// in full. What's left is the body's, shared out by `budget`.
+pub const HEADER_H: f32 = 60.0;
+pub fn over_h(compact: bool) -> f32 {
+    if compact { 56.0 } else { 62.0 }
+}
+pub fn transport_h(compact: bool) -> f32 {
+    if compact { 52.0 } else { 58.0 }
+}
+const BODY_PT: f32 = 10.0;
+const BODY_PB: f32 = 8.0;
+
+/// What a card's height leaves its body's parts: the body, a pad's height, the pitch fader's,
+/// and the beat ring's size. Every part has a fixed height but these, so they're worked out
+/// exactly and nothing spills.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Budget {
+    pub body: f32,
+    pub pad: f32,
+    pub fader: f32,
+    pub ring: f32,
+}
+
+pub fn budget(panel: f32, compact: bool, four: bool) -> Budget {
+    let body = panel - 2.0 - HEADER_H - over_h(compact) - transport_h(compact);
+    let inner = body - BODY_PT - BODY_PB;
+    // The pads' column: the captions, the mode's tabs (or, four decks, its dropdown), the loop.
+    let column = match (compact, four) {
+        (false, _) => 12.0 + 6.0 + 32.0 + 6.0 + 6.0 + 6.0 + 14.0 + 6.0 + 34.0,
+        (true, false) => 32.0 + 6.0 + 6.0 + 6.0 + 34.0,
+        (true, true) => 26.0 + 6.0 + 6.0 + 6.0 + 34.0,
+    };
+    // The tempo's column: its caption, its readout, its reach, and (compact) the key.
+    let tempo = 12.0 + 14.0 + 20.0 + 3.0 * 5.0 + if compact { 18.0 + 5.0 } else { 0.0 };
+    Budget {
+        body,
+        pad: ((inner - column) / 2.0).clamp(22.0, 52.0),
+        fader: (inner - tempo).max(36.0),
+        ring: (inner - 36.0).min(150.0),
+    }
+}
+
+/// A section's caption: "PADS", "LOOP", "TEMPO" (12 high, exactly: the budget counts on it).
 pub fn caption(s: &'static str) -> Div {
     div()
+        .h(px(12.))
+        .flex_none()
+        .line_height(px(12.))
         .text_size(px(9.5))
         .font_weight(FontWeight::SEMIBOLD)
         .text_color(rgb(TEXT_4))
@@ -64,7 +109,8 @@ pub fn clock(seconds: f64, tenths: bool) -> String {
 impl Live {
     pub fn deck_panel(&self, i: usize, cx: &mut Context<Self>) -> impl IntoElement {
         let compact = self.narrow;
-        let h = if compact { PANEL_H_FOUR } else { PANEL_H };
+        let h = self.panel_h;
+        let b = budget(h, compact, self.four);
         let s = self.status().decks[i];
         let dropping = self
             .drop_on
@@ -113,6 +159,7 @@ impl Live {
                 live.drop_on = None;
                 live.dropped(Some(i), paths, cx)
             }))
+            .child(probe(&self.probes, format!("deck{i}")))
             .child(self.deck_header(i, &s, cx))
             .child(match self.grid_edit == Some(i) {
                 true => self.grid_tray(i, cx),
@@ -120,29 +167,36 @@ impl Live {
             })
             .child(
                 div()
-                    .flex_1()
-                    .min_h(px(0.))
+                    .relative()
+                    .h(px(b.body))
+                    .flex_none()
+                    .overflow_hidden()
                     .flex()
                     .gap(px(if compact { 10. } else { 16. }))
                     .px(px(if compact { 10. } else { 14. }))
-                    .pt(px(10.))
-                    .when(!compact, |d| d.child(self.ring_column(i, &s, cx)))
+                    .pt(px(BODY_PT))
+                    .pb(px(BODY_PB))
+                    .items_start()
+                    .child(probe(&self.probes, format!("deck{i}.body")))
+                    .when(!compact, |d| d.child(self.ring_column(i, &s, b.ring, cx)))
                     .child(
                         div()
+                            .relative()
                             .flex_1()
                             .min_w(px(0.))
                             .flex()
                             .flex_col()
                             .gap(px(6.))
+                            .child(probe(&self.probes, format!("deck{i}.body.mid")))
                             .when(!compact, |d| d.child(caption("PADS")))
                             .child(self.pad_tabs(i, cx))
-                            .child(self.pads(i, &s, cx))
+                            .child(self.pads(i, &s, b.pad, cx))
                             .when(!compact, |d| {
                                 d.child(div().pt(px(2.)).child(caption("LOOP")))
                             })
                             .child(self.loop_row(i, &s, cx)),
                     )
-                    .child(self.tempo_column(i, &s, cx)),
+                    .child(self.tempo_column(i, &s, b.fader, cx)),
             )
             .child(self.transport(i, &s, cx))
             .when_some(dropping, |d, what| {
@@ -246,16 +300,20 @@ impl Live {
                 )
         };
         div()
-            .h(px(60.))
+            .relative()
+            .h(px(HEADER_H))
             .flex_none()
             .flex()
             .items_center()
-            .gap(px(12.))
-            .px(px(14.))
+            .gap(px(if compact { 8. } else { 12. }))
+            .px(px(if compact { 10. } else { 14. }))
             .border_b_1()
             .border_color(rgb(LINE_SOFT))
-            .child(
-                div()
+            .child(probe(&self.probes, format!("deck{i}.header")))
+            .child(match self.layered {
+                // Four decks, two a side: which of this side's two is shown.
+                true => self.layer_switch(i, cx),
+                false => div()
                     .size(px(24.))
                     .flex_none()
                     .rounded(px(5.))
@@ -267,7 +325,7 @@ impl Live {
                     .font_weight(FontWeight::BOLD)
                     .text_size(px(12.))
                     .child(DECK_NAMES[i]),
-            )
+            })
             .child(
                 div()
                     .flex_1()
@@ -362,6 +420,40 @@ impl Live {
                             ),
                     ),
             )
+            .child(mark(&self.probes, format!("deck{i}.header.end")))
+    }
+
+    /// Four decks, two a side: the two this side has (A and C, or B and D), the one shown lit.
+    fn layer_switch(&self, i: usize, cx: &mut Context<Self>) -> Div {
+        let side = i % 2;
+        tray().children([side, side + 2].into_iter().map(|d| {
+            let on = d == i;
+            div()
+                .w(px(22.))
+                .h(px(20.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(4.))
+                .cursor_pointer()
+                .font_weight(FontWeight::BOLD)
+                .text_size(px(11.))
+                .bg(if on {
+                    alpha(DECK_COLORS[d], 0.2)
+                } else {
+                    gpui::Hsla::transparent_black()
+                })
+                .text_color(rgb(if on { DECK_COLORS[d] } else { TEXT_4 }))
+                .hover(|s| s.text_color(rgb(DECK_COLORS[d])))
+                .child(DECK_NAMES[d])
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |live, _, _, cx| {
+                        live.layer[side] = d;
+                        cx.notify();
+                    }),
+                )
+        }))
     }
 
     /// The beat grid's tools: half or double the tempo, nudge it, move the grid, or put the
@@ -378,7 +470,8 @@ impl Live {
             )
         };
         div()
-            .h(px(if self.narrow { 54. } else { 62. }))
+            .relative()
+            .h(px(over_h(self.narrow)))
             .flex_none()
             .px(px(10.))
             .flex()
@@ -434,12 +527,15 @@ impl Live {
         let len = s.len / self.rate;
         let left = len - now;
         div()
+            .relative()
+            .h(px(over_h(self.narrow)))
             .flex_none()
             .px(px(14.))
             .pt(px(10.))
             .flex()
             .flex_col()
             .gap(px(4.))
+            .child(probe(&self.probes, format!("deck{i}.over")))
             .child(
                 div()
                     .id(("overview", i))
@@ -455,6 +551,8 @@ impl Live {
             )
             .child(
                 div()
+                    .h(px(14.))
+                    .line_height(px(14.))
                     .flex()
                     .justify_between()
                     .font_family(MONO)
@@ -502,8 +600,8 @@ impl Live {
     /// The beat ring: the phrase's sixteen beats round it (the one playing lit, those gone by
     /// dim), the bar and beat in the middle. It's a jog too: grabbed, it holds the track; turned,
     /// it scratches. Keylock and slip under it.
-    fn ring_column(&self, i: usize, s: &DeckStatus, cx: &mut Context<Self>) -> Div {
-        let size = 150.0;
+    fn ring_column(&self, i: usize, s: &DeckStatus, size: f32, cx: &mut Context<Self>) -> Div {
+        let probe_at = probe(&self.probes, format!("deck{i}.body.ring"));
         let color = DECK_COLORS[i];
         let beat = (!s.beat.is_nan()).then_some(s.beat);
         let per = self.decks[i]
@@ -527,12 +625,14 @@ impl Live {
         };
         let d = &self.decks[i];
         div()
+            .relative()
             .w(px(size))
             .flex_none()
             .flex()
             .flex_col()
             .items_center()
             .gap(px(10.))
+            .child(probe_at)
             .child(
                 div()
                     .size(px(size))
@@ -686,13 +786,18 @@ impl Live {
             return self.pad_dropdown(i, mode, cx);
         }
         let tab = |label: &'static str, m: Pads, cx: &mut Context<Self>| {
-            seg(label, mode == m, 24.0).flex_1().on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |live, _, _, cx| {
-                    live.decks[i].pads = m;
-                    cx.notify();
-                }),
-            )
+            seg(label, mode == m, 24.0)
+                .flex_1()
+                .min_w(px(0.))
+                .px(px(4.))
+                .overflow_hidden()
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |live, _, _, cx| {
+                        live.decks[i].pads = m;
+                        cx.notify();
+                    }),
+                )
         };
         tray()
             .child(tab(
@@ -712,6 +817,7 @@ impl Live {
                 Pads::Stems,
                 cx,
             ))
+            .child(mark(&self.probes, format!("deck{i}.body.mid.tabsend")))
     }
 
     /// Four decks: no room for five tabs, so the pad mode is picked from a dropdown.
@@ -783,8 +889,7 @@ impl Live {
             })
     }
 
-    fn pads(&self, i: usize, s: &DeckStatus, cx: &mut Context<Self>) -> Div {
-        let h = if self.narrow { 30.0 } else { 40.0 };
+    fn pads(&self, i: usize, s: &DeckStatus, h: f32, cx: &mut Context<Self>) -> Div {
         let four = self.narrow;
         let period = self.decks[i]
             .analysis
@@ -802,7 +907,7 @@ impl Live {
                 let p = match self.decks[i].pads {
                     Pads::HotCue => {
                         let set = !s.hot[k].is_nan();
-                        let label = match set && !four {
+                        let label = match set && !four && self.card_w >= 500.0 {
                             true => format!("{}  {}", k + 1, clock(s.hot[k] / self.rate, false)),
                             false => format!("{}", k + 1),
                         };
@@ -869,10 +974,15 @@ impl Live {
 
     fn loop_row(&self, i: usize, s: &DeckStatus, cx: &mut Context<Self>) -> Div {
         let size = self.decks[i].loop_beats;
+        let tight = if self.narrow || self.card_w < 520.0 {
+            6.0
+        } else {
+            10.0
+        };
         let on = s.loop_on && !s.roll;
         let set_in = !s.loop_in.is_nan();
         let btn = |label: &'static str, lit: bool, cmd: fn() -> DeckCmd, cx: &mut Context<Self>| {
-            seg(label, lit, 26.0).on_mouse_down(
+            seg(label, lit, 26.0).px(px(tight)).on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |live, _, _, cx| {
                     live.act(i, cmd());
@@ -881,7 +991,7 @@ impl Live {
             )
         };
         let resize = move |by: f64, label: &'static str, cx: &mut Context<Self>| {
-            seg(label, false, 26.0).on_mouse_down(
+            seg(label, false, 26.0).px(px(tight)).on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |live, _, _, cx| {
                     let b = (live.decks[i].loop_beats * by).clamp(1.0 / 32.0, 64.0);
@@ -903,6 +1013,7 @@ impl Live {
             .child(
                 div()
                     .flex_1()
+                    .min_w(px(0.))
                     .h(px(26.))
                     .flex()
                     .items_center()
@@ -937,23 +1048,27 @@ impl Live {
                 || DeckCmd::Reloop,
                 cx,
             ))
+            .child(mark(&self.probes, format!("deck{i}.body.mid.loopend")))
     }
 
     /// The pitch fader: TEMPO over it, its reach under it (clicked round ±8, 16, 50, 100%).
-    fn tempo_column(&self, i: usize, s: &DeckStatus, cx: &mut Context<Self>) -> Div {
+    fn tempo_column(&self, i: usize, s: &DeckStatus, fh: f32, cx: &mut Context<Self>) -> Div {
         let range = self.decks[i].range;
         let compact = self.narrow;
-        let fh = if compact { 96.0 } else { 190.0 };
         div()
+            .relative()
             .w(px(if compact { 40. } else { 48. }))
             .flex_none()
             .flex()
             .flex_col()
             .items_center()
             .gap(px(5.))
+            .child(probe(&self.probes, format!("deck{i}.body.tempo")))
             .child(caption("TEMPO"))
             .child(
                 div()
+                    .h(px(14.))
+                    .line_height(px(14.))
                     .font_family(MONO)
                     .text_size(px(10.5))
                     .text_color(rgb(if s.sync { ACCENT_TEXT } else { TEXT_2 }))
@@ -1000,6 +1115,7 @@ impl Live {
             )
         };
         div()
+            .h(px(18.))
             .flex()
             .items_center()
             .child(step(-1.0, "♭", cx))
@@ -1045,7 +1161,8 @@ impl Live {
                 .px(px(pad_x))
         };
         div()
-            .h(px(if compact { 52. } else { 58. }))
+            .relative()
+            .h(px(transport_h(compact)))
             .flex_none()
             .flex()
             .items_center()
@@ -1053,6 +1170,7 @@ impl Live {
             .px(px(if compact { 10. } else { 14. }))
             .border_t_1()
             .border_color(rgb(LINE_SOFT))
+            .child(probe(&self.probes, format!("deck{i}.transport")))
             .child(
                 round(Icon::ToStart, cue_lit, AMBER, self.holding(i, Hold::Cue)).on_mouse_down(
                     MouseButton::Left,
@@ -1121,6 +1239,7 @@ impl Live {
                     ),
                 )
             })
+            .child(mark(&self.probes, format!("deck{i}.transport.end")))
     }
 
     fn key_buttons(&self, i: usize, s: &DeckStatus, cx: &mut Context<Self>) -> Div {

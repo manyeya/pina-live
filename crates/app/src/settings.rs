@@ -25,6 +25,8 @@ pub struct Settings {
     pub keylock: bool,
     /// A playing deck won't take another track.
     pub load_lock: bool,
+    /// The panels' sizes and the library's view.
+    pub layout: crate::layout::Layout,
 }
 
 impl Default for Settings {
@@ -35,6 +37,7 @@ impl Default for Settings {
             auto_gain: true,
             keylock: true,
             load_lock: true,
+            layout: crate::layout::Layout::default(),
         }
     }
 }

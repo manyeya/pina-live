@@ -7,9 +7,11 @@ mod crates;
 mod decks;
 mod fxbar;
 mod keys;
+mod layout;
 mod live;
 mod midi;
 mod mixer;
+mod probe;
 mod settings;
 mod stems;
 #[cfg(test)]

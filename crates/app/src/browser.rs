@@ -55,7 +55,6 @@ impl gpui::Render for TrackDrag {
             )
     }
 }
-const SIDE_W: f32 = 196.0;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Source {
@@ -231,15 +230,18 @@ impl Live {
         let _ = window;
         div()
             .id("browser")
+            .relative()
             .flex_1()
-            .min_h(px(120.))
+            .min_h(px(0.))
             .flex()
+            .child(crate::probe::probe(&self.probes, "lib"))
             .border_t_1()
             .border_color(rgb(LINE))
             .on_drop(
                 cx.listener(|live, paths: &ExternalPaths, _, cx| live.dropped(None, paths, cx)),
             )
             .child(self.sidebar(cx))
+            .child(self.grip(crate::layout::Edge::Side, cx))
             .child(
                 div()
                     .flex_1()
@@ -320,7 +322,7 @@ impl Live {
         };
         let mut col = div()
             .id("sidebar")
-            .w(px(SIDE_W))
+            .w(px(self.settings.layout.side))
             .flex_none()
             .flex()
             .flex_col()
@@ -436,13 +438,16 @@ impl Live {
     fn search_bar(&self, cx: &mut Context<Self>) -> Div {
         let analysing = self.analyzer.busy();
         let n = self.browser.rows.len();
+        let full = self.settings.layout.library == crate::layout::LibView::Full;
         div()
+            .relative()
             .h(px(42.))
             .flex_none()
             .flex()
             .items_center()
             .gap(px(10.))
             .px(px(10.))
+            .child(crate::probe::probe(&self.probes, "lib.search"))
             .border_b_1()
             .border_color(rgb(LINE_SOFT))
             .child(
@@ -482,8 +487,28 @@ impl Live {
                 div()
                     .text_size(px(11.))
                     .text_color(rgb(TEXT_4))
+                    .min_w(px(0.))
+                    .whitespace_nowrap()
+                    .overflow_hidden()
+                    .text_ellipsis()
                     .child("Drag a track onto a deck · double-click loads the free one"),
             )
+            // The library as big as the window, or shut (⌘⇧L, ⌘L).
+            .child(icon_seg(Icon::Expand, full, 26.0).on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |live, _, _, cx| {
+                    let v = match full {
+                        true => crate::layout::LibView::Open,
+                        false => crate::layout::LibView::Full,
+                    };
+                    live.set_library(v, cx)
+                }),
+            ))
+            .child(icon_seg(Icon::Close, false, 26.0).on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|live, _, _, cx| live.set_library(crate::layout::LibView::Closed, cx)),
+            ))
+            .child(crate::probe::mark(&self.probes, "lib.search.end"))
     }
 
     /// Match: only what mixes with the leading deck, said against what.

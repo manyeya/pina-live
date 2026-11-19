@@ -55,6 +55,9 @@ actions!(
         LoadB,
         BrowseUp,
         BrowseDown,
+        ToggleLibrary,
+        FullLibrary,
+        ExitFull,
     ]
 );
 
@@ -71,6 +74,9 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("shift-right", LoadB, ctx),
         KeyBinding::new("up", BrowseUp, ctx),
         KeyBinding::new("down", BrowseDown, ctx),
+        KeyBinding::new("cmd-l", ToggleLibrary, ctx),
+        KeyBinding::new("cmd-shift-l", FullLibrary, ctx),
+        KeyBinding::new("escape", ExitFull, ctx),
     ]);
 }
 
@@ -206,6 +212,15 @@ pub struct Live {
     pub narrow: bool,
     /// Each waveform's height, made to leave the library room in a short window.
     pub wave_h: f32,
+    /// The decks' height this frame (the layout's, fitted to the window).
+    pub panel_h: f32,
+    /// Four decks, two at a time a side (a narrow window): which is shown each side.
+    pub layered: bool,
+    pub layer: [usize; 2],
+    /// A deck card's width this frame: what fits on its pads and its rows.
+    pub card_w: f32,
+    /// Where the panels were laid out, for the integration tests.
+    pub probes: crate::probe::Probes,
     pub mix: MixUi,
     pub fx: [crate::fxbar::FxUi; pina_live_engine::fx::UNITS],
     /// The FX unit whose effect menu is open, and the deck whose pad-mode menu is (four decks).
@@ -455,7 +470,12 @@ impl Live {
             keep_drop: false,
             preview: None,
             narrow: false,
-            wave_h: 88.0,
+            wave_h: 76.0,
+            panel_h: crate::decks::PANEL_H,
+            layered: false,
+            layer: [0, 1],
+            card_w: 520.0,
+            probes: Default::default(),
             mix: MixUi::default(),
             fx: Default::default(),
             fx_menu: None,
@@ -1112,21 +1132,20 @@ impl Render for Live {
         let shown = self.shown();
         let view = window.viewport_size();
         let (w, h) = (f32::from(view.width), f32::from(view.height));
-        self.narrow = self.four || w < 1300.0;
-        // What's left for the waveforms once the bars, decks and a usable library are in.
-        let panel = 2.0 * crate::decks::GAP
-            + if self.narrow {
-                crate::decks::PANEL_H_FOUR
-            } else {
-                crate::decks::PANEL_H
-            };
-        let spare = h
-            - 44.0
-            - panel
-            - crate::fxbar::FX_BAR_H
-            - 190.0
-            - if self.learning { 34.0 } else { 0.0 };
-        self.wave_h = (spare / shown as f32).clamp(40.0, if shown > 2 { 56.0 } else { 76.0 });
+        let sizes =
+            crate::layout::fit(&self.settings.layout, w, h, shown, self.four, self.learning);
+        self.narrow = sizes.compact;
+        self.layered = sizes.layered;
+        self.card_w = sizes.card;
+        self.wave_h = sizes.wave;
+        self.panel_h = sizes.panel;
+        let library = self.settings.layout.library;
+        // The decks left to right: A and C on the crossfader's left, B and D on its right.
+        let (left, right): (Vec<usize>, Vec<usize>) = match (self.four, self.layered) {
+            (false, _) => (vec![0], vec![1]),
+            (true, false) => (vec![0, 2], vec![1, 3]),
+            (true, true) => (vec![self.layer[0]], vec![self.layer[1]]),
+        };
         div()
             .id("live")
             .relative()
@@ -1163,23 +1182,58 @@ impl Render for Live {
             .on_action(cx.listener(|live, _: &LoadB, _, cx| live.load_selected(1, cx)))
             .on_action(cx.listener(|live, _: &BrowseUp, _, cx| live.browse_by(-1, cx)))
             .on_action(cx.listener(|live, _: &BrowseDown, _, cx| live.browse_by(1, cx)))
+            .on_action(cx.listener(|live, _: &ToggleLibrary, _, cx| {
+                let v = match live.settings.layout.library {
+                    crate::layout::LibView::Open => crate::layout::LibView::Closed,
+                    _ => crate::layout::LibView::Open,
+                };
+                live.set_library(v, cx);
+            }))
+            .on_action(cx.listener(|live, _: &FullLibrary, _, cx| {
+                let v = match live.settings.layout.library {
+                    crate::layout::LibView::Full => crate::layout::LibView::Open,
+                    _ => crate::layout::LibView::Full,
+                };
+                live.set_library(v, cx);
+            }))
+            .on_action(cx.listener(|live, _: &ExitFull, _, cx| {
+                if live.settings.layout.library == crate::layout::LibView::Full {
+                    live.set_library(crate::layout::LibView::Open, cx);
+                }
+            }))
             .child(self.top_bar(cx))
             .when(self.learning, |d| d.child(self.learn_bar(cx)))
-            .child(self.waveforms(shown, cx))
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .gap(px(crate::decks::GAP))
-                    .p(px(crate::decks::GAP))
-                    .when(self.four, |d| d.child(self.deck_panel(2, cx)))
-                    .child(self.deck_panel(0, cx))
-                    .child(self.mixer_panel(cx))
-                    .child(self.deck_panel(1, cx))
-                    .when(self.four, |d| d.child(self.deck_panel(3, cx))),
-            )
-            .child(self.fx_bar(cx))
-            .child(self.browser_panel(window, cx))
+            .when(library == crate::layout::LibView::Full, |d| {
+                d.child(self.now_playing(cx))
+                    .child(self.browser_panel(window, cx))
+            })
+            .when(library != crate::layout::LibView::Full, |d| {
+                d.child(self.waveforms(shown, cx))
+                    .child(self.grip(crate::layout::Edge::Waves, cx))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_none()
+                            .h(px(self.panel_h + 2.0 * crate::decks::GAP))
+                            .gap(px(crate::decks::GAP))
+                            .p(px(crate::decks::GAP))
+                            .children(
+                                left.iter()
+                                    .map(|&i| self.deck_panel(i, cx).into_any_element()),
+                            )
+                            .child(self.mixer_panel(cx))
+                            .children(
+                                right
+                                    .iter()
+                                    .map(|&i| self.deck_panel(i, cx).into_any_element()),
+                            ),
+                    )
+                    .child(self.grip(crate::layout::Edge::Panel, cx))
+                    .child(self.fx_bar(cx))
+                    .when(library == crate::layout::LibView::Open, |d| {
+                        d.child(self.browser_panel(window, cx))
+                    })
+            })
             .when(self.show_settings, |d| d.child(self.settings_panel(cx)))
             .children(self.menu_overlay(cx))
     }

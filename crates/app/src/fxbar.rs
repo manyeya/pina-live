@@ -143,37 +143,66 @@ impl Live {
                         }),
                     )
             }));
-        // Its length in beats, a chip each (the ones either end of the list by ◀ ▶ when narrow).
-        let chips: &[f64] = match compact {
-            true => &[0.25, 0.5, 1.0, 2.0, 4.0],
-            false => &[0.25, 0.5, 0.75, 1.0, 2.0, 4.0, 8.0],
+        // Its length in beats: a chip each where there's room, else stepped through ◀ ▶.
+        let chips: &[f64] = &[0.25, 0.5, 0.75, 1.0, 2.0, 4.0, 8.0];
+        let beats = match compact {
+            true => {
+                let step = |by: isize, label: &'static str, cx: &mut Context<Self>| {
+                    seg(label, false, 22.0).px(px(6.)).on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |live, _, _, cx| {
+                            let b = live.fx[u].settings.beats;
+                            let k = FX_BEATS
+                                .iter()
+                                .position(|&x| (x - b).abs() < 1e-9)
+                                .unwrap_or(5) as isize;
+                            live.fx[u].settings.beats =
+                                FX_BEATS[(k + by).clamp(0, FX_BEATS.len() as isize - 1) as usize];
+                            live.send_fx(u);
+                            cx.notify();
+                        }),
+                    )
+                };
+                tray()
+                    .child(step(-1, "◀", cx))
+                    .child(
+                        div()
+                            .w(px(34.))
+                            .text_center()
+                            .font_family(MONO)
+                            .text_size(px(11.))
+                            .text_color(rgb(TEXT))
+                            .child(beats_text_fx(s.beats)),
+                    )
+                    .child(step(1, "▶", cx))
+            }
+            false => tray().children(chips.iter().map(|&b| {
+                let on = (s.beats - b).abs() < 1e-9;
+                div()
+                    .min_w(px(27.))
+                    .h(px(22.))
+                    .px(px(3.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(5.))
+                    .cursor_pointer()
+                    .font_family(MONO)
+                    .text_size(px(11.))
+                    .bg(rgb(if on { RAISED } else { BG }))
+                    .text_color(rgb(if on { TEXT } else { TEXT_3 }))
+                    .when(!on, |d| d.hover(|st| st.text_color(rgb(TEXT_2))))
+                    .child(beats_text_fx(b))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |live, _, _, cx| {
+                            live.fx[u].settings.beats = b;
+                            live.send_fx(u);
+                            cx.notify();
+                        }),
+                    )
+            })),
         };
-        let beats = tray().children(chips.iter().map(|&b| {
-            let on = (s.beats - b).abs() < 1e-9;
-            div()
-                .min_w(px(27.))
-                .h(px(22.))
-                .px(px(3.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(5.))
-                .cursor_pointer()
-                .font_family(MONO)
-                .text_size(px(11.))
-                .bg(rgb(if on { RAISED } else { BG }))
-                .text_color(rgb(if on { TEXT } else { TEXT_3 }))
-                .when(!on, |d| d.hover(|st| st.text_color(rgb(TEXT_2))))
-                .child(beats_text_fx(b))
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |live, _, _, cx| {
-                        live.fx[u].settings.beats = b;
-                        live.send_fx(u);
-                        cx.notify();
-                    }),
-                )
-        }));
         let on_any = f.on.iter().any(|x| *x);
         div()
             .flex_1()
@@ -183,8 +212,10 @@ impl Live {
             .items_center()
             .gap(px(8.))
             .px(px(12.))
+            .relative()
             .overflow_hidden()
             .when(u > 0, |d| d.border_l_1().border_color(rgb(LINE)))
+            .child(crate::probe::probe(&self.probes, format!("fx{u}")))
             .child(caption(if u == 0 { "FX 1" } else { "FX 2" }))
             .child(
                 div()
@@ -278,6 +309,7 @@ impl Live {
                         }),
                     )
             })))
+            .child(crate::probe::mark(&self.probes, format!("fx{u}.end")))
     }
 
     /// A small knob with its caption beside it, for the FX bar.

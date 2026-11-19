@@ -4,6 +4,9 @@
 //! cancels, and losing focus confirms too; in a field of several lines ⇧Enter starts a new one.
 //! Adapted from gpui's input example.
 
+// Copied whole from Pina Studio so the two apps look alike: some of it Pina Live doesn't use.
+#![allow(dead_code)]
+
 use std::ops::Range;
 
 use gpui::{

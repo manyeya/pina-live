@@ -2,6 +2,9 @@
 //! quiet surfaces in a few close greys; color is kept for what's playing (tracks, meters) and for
 //! what's on (the accent).
 
+// Copied whole from Pina Studio so the two apps look alike: some of it Pina Live doesn't use.
+#![allow(dead_code)]
+
 use std::borrow::Cow;
 
 use crate::ui::scale::px;

@@ -11,10 +11,14 @@ use pina_live_engine::{
 
 use crate::{
     controls::Ctl,
-    decks::{PANEL_H, PANEL_H_FOUR, caption},
+    decks::caption,
     live::{DECK_COLORS, DECK_NAMES, Live},
+    probe::{mark, probe},
     ui::{scale::px, theme::*},
 };
+
+/// The crossfader card's height.
+const XF_H: f32 = 40.0;
 
 /// Level meters fall back this much each frame (of 30 a second).
 const FALL: f32 = 0.82;
@@ -23,7 +27,7 @@ impl Live {
     /// The channels, left to right, as the decks sit.
     pub fn channel_order(&self) -> Vec<usize> {
         match self.four {
-            true => vec![2, 0, 1, 3],
+            true => vec![0, 2, 1, 3],
             false => vec![0, 1],
         }
     }
@@ -44,10 +48,17 @@ impl Live {
 
     pub fn mixer_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let order = self.channel_order();
-        let compact = self.narrow;
-        let h = if compact { PANEL_H_FOUR } else { PANEL_H };
+        let h = self.panel_h;
         let half = order.len() / 2;
-        let mut strips = div().flex().items_start().justify_center().gap(px(8.));
+        let mut strips = div()
+            .relative()
+            .h(px(h - XF_H - 8.0))
+            .flex_none()
+            .flex()
+            .items_start()
+            .justify_center()
+            .gap(px(8.))
+            .child(probe(&self.probes, "mixer.strips"));
         for (k, &ch) in order.iter().enumerate() {
             if k == half {
                 strips = strips.child(self.master_card(cx));
@@ -55,13 +66,35 @@ impl Live {
             strips = strips.child(self.strip(ch, cx));
         }
         div()
+            .relative()
             .h(px(h))
             .flex_none()
             .flex()
             .flex_col()
             .gap(px(8.))
+            .child(probe(&self.probes, "mixer"))
             .child(strips)
             .child(self.crossfader(cx))
+    }
+
+    /// What the decks' height leaves a channel's fader (its other parts all fixed), and the
+    /// master's meter.
+    fn mixer_budget(&self) -> (f32, f32) {
+        let compact = self.narrow;
+        // The strips' row, less each strip's border and a hair for type's rounding.
+        let room = self.panel_h - XF_H - 8.0 - 2.0 - 4.0;
+        let strip = match compact {
+            true => 16.0 + 20.0 + 5.0 * 24.0 + 20.0 + 22.0 + 2.0 + 14.0 + 9.0 * 3.0,
+            false => 16.0 + 20.0 + 5.0 * 30.0 + 20.0 + 24.0 + 2.0 + 14.0 + 9.0 * 5.0,
+        };
+        let master = match compact {
+            true => 20.0 + 12.0 + 32.0 + 12.0 + 40.0 + 4.0 * 6.0,
+            false => 20.0 + 12.0 + 40.0 + 12.0 + 40.0 + 4.0 * 10.0,
+        };
+        (
+            (room - strip).max(36.0),
+            (room - master).clamp(48.0, if compact { 110.0 } else { 160.0 }),
+        )
     }
 
     /// A channel: its deck and crossfader side, trim and the three bands and the filter, its FX
@@ -97,7 +130,7 @@ impl Live {
         };
         let side = self.mix.side[ch];
         let cue = self.mix.cue[ch];
-        let fh = if compact { 64.0 } else { 100.0 };
+        let fh = self.mixer_budget().0;
         let gain = pina_live_engine::mixer::fader_gain(self.mix.fader[ch], 0.6);
         let db = 20.0 * gain.max(1e-6).log10();
         let send = |u: usize, cx: &mut Context<Self>| {
@@ -134,6 +167,7 @@ impl Live {
                 )
         };
         div()
+            .relative()
             .w(px(w))
             .flex_none()
             .flex()
@@ -141,6 +175,7 @@ impl Live {
             .items_center()
             .gap(px(if compact { 3. } else { 5. }))
             .py(px(8.))
+            .child(probe(&self.probes, format!("mixer.strips.strip{ch}")))
             .rounded(px(8.))
             .bg(rgb(STRIP))
             .border_1()
@@ -271,6 +306,8 @@ impl Live {
             )
             .child(
                 div()
+                    .h(px(14.))
+                    .line_height(px(14.))
                     .font_family(MONO)
                     .text_size(px(10.))
                     .text_color(rgb(TEXT_3))
@@ -279,14 +316,16 @@ impl Live {
                         false => format!("{} dB", db_text(db)),
                     }),
             )
+            .child(mark(&self.probes, format!("mixer.strips.strip{ch}.end")))
     }
 
     /// The master: its level and meter, the limiter at work, the headphones' cue mix and level.
     fn master_card(&self, cx: &mut Context<Self>) -> Div {
         let compact = self.narrow;
         let limiting = self.reduction > 0.5;
-        let mh = if compact { 100.0 } else { 150.0 };
+        let mh = self.mixer_budget().1;
         div()
+            .relative()
             .w(px(if self.four { 96. } else { 112. }))
             .flex_none()
             .flex()
@@ -298,6 +337,7 @@ impl Live {
             .bg(rgb(STRIP))
             .border_1()
             .border_color(rgb(LINE))
+            .child(probe(&self.probes, "mixer.strips.master"))
             .child(caption("MASTER"))
             .child(self.knob(Ctl::Master, "", TEXT, if compact { 32. } else { 40. }, cx))
             .child(
@@ -344,13 +384,39 @@ impl Live {
                     .child(self.knob(Ctl::CueMix, "CUE MIX", AMBER, 26.0, cx))
                     .child(self.knob(Ctl::Phones, "PHONES", AMBER, 26.0, cx)),
             )
+            .child(mark(&self.probes, "mixer.strips.master.end"))
     }
 
     fn crossfader(&self, cx: &mut Context<Self>) -> Div {
         let v = (self.mix.xf + 1.0) / 2.0;
-        let (w, cap) = (240.0, 20.0);
+        let (w, cap) = (if self.four { 220.0 } else { 240.0 }, 20.0);
+        // Each end says which decks are on it (as their channels' strips set them).
+        let ends = |side: Side| {
+            let on: Vec<usize> = self
+                .channel_order()
+                .into_iter()
+                .filter(|&ch| self.mix.side[ch] == side)
+                .collect();
+            div()
+                .min_w(px(28.))
+                .flex()
+                .gap(px(4.))
+                .when(side == Side::A, |d| d.justify_end())
+                .when(on.is_empty(), |d| {
+                    d.child(div().text_color(rgb(TEXT_4)).child("—"))
+                })
+                .children(on.into_iter().map(|ch| {
+                    div()
+                        .text_size(px(10.5))
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(rgb(DECK_COLORS[ch]))
+                        .child(DECK_NAMES[ch])
+                }))
+        };
         div()
-            .h(px(40.))
+            .relative()
+            .h(px(XF_H))
+            .flex_none()
             .flex()
             .items_center()
             .justify_center()
@@ -359,13 +425,8 @@ impl Live {
             .bg(rgb(STRIP))
             .border_1()
             .border_color(rgb(LINE))
-            .child(
-                div()
-                    .text_size(px(10.))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(rgb(DECK_COLORS[0]))
-                    .child("A"),
-            )
+            .child(probe(&self.probes, "mixer.xf"))
+            .child(ends(Side::A))
             .child(
                 div()
                     .relative()
@@ -422,13 +483,8 @@ impl Live {
                             ),
                     ),
             )
-            .child(
-                div()
-                    .text_size(px(10.))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(rgb(DECK_COLORS[1]))
-                    .child("B"),
-            )
+            .child(ends(Side::B))
+            .child(mark(&self.probes, "mixer.xf.end"))
     }
 }
 

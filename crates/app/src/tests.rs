@@ -1,4 +1,7 @@
-//! The window, drawn to PNGs to look at without a window on screen.
+//! The window, tested as a person uses it: tracks dragged onto decks, edges dragged to size the
+//! panels, the library shut and full screen, every deck state at every window size checked for
+//! anything spilling out of its panel (with macOS's own type, headless), and drawn to PNGs to
+//! look at.
 
 use std::{path::PathBuf, sync::Arc, thread, time::Duration};
 
@@ -33,15 +36,26 @@ fn write_wav(path: &std::path::Path, seconds: f32) {
     std::fs::write(path, b).unwrap();
 }
 
-/// The tests' own data folder, never the person's: one for the run.
+/// The tests' own data folder and separation models, never the person's: one for the run. Its
+/// one model is a stand-in (an empty ONNX file) named as the longest real one, for the layout.
 fn test_home() -> PathBuf {
     static DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
     DIR.get_or_init(|| {
         let d = std::env::temp_dir().join(format!("pina-live-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
-        // SAFETY: set once, before any test thread reads it.
-        unsafe { std::env::set_var("PINA_LIVE_HOME", &d) };
+        let model = d.join("models").join("roformer");
+        std::fs::create_dir_all(&model).unwrap();
+        std::fs::write(
+            model.join("model.json"),
+            r#"{"name": "BS-RoFormer SW", "stems": ["bass", "drums", "other", "vocals"], "input": "wave"}"#,
+        )
+        .unwrap();
+        std::fs::write(model.join("model.onnx"), b"").unwrap();
+        // SAFETY: set once, before any test thread reads them.
+        unsafe {
+            std::env::set_var("PINA_LIVE_HOME", &d);
+            std::env::set_var("PINA_MODELS", d.join("models"));
+        }
         d
     })
     .clone()
@@ -172,7 +186,7 @@ fn shots() {
     cx.update(|cx| {
         window
             .update(cx, |live, _, cx| {
-                live.four = page == "four";
+                live.four = page == "four" || page == "four-narrow" || page == "stemsbox";
                 live.queue_analysis(&ids);
                 cx.notify();
             })
@@ -259,6 +273,15 @@ fn shots() {
                     on: true,
                 });
                 live.show_settings = page == "settings";
+                match page.as_str() {
+                    "closed" => live.settings.layout.library = crate::layout::LibView::Closed,
+                    "full" => live.settings.layout.library = crate::layout::LibView::Full,
+                    "stemsbox" => live
+                        .decks
+                        .iter_mut()
+                        .for_each(|d| d.pads = crate::live::Pads::Stems),
+                    _ => {}
+                }
                 if page == "drop" {
                     live.drop_on = Some((1, "Climax (LIVE cover by Leroy)".into()));
                     live.keep_drop = true;
@@ -314,4 +337,298 @@ fn fx_are_on_a_deck_when_switched_on(cx: &mut gpui::TestAppContext) {
         live.toggle_fx(1, cx);
         assert!(live.fx[1].settings.on && live.fx[1].on[0]);
     });
+}
+
+/// Every state a deck's in, at every size the window comes in, two decks and four, the library
+/// open, shut and full screen: drawn with macOS's own type (headless, as the real window draws
+/// it) and every panel's contents checked against it. A pad, a box, a button or a line of text
+/// past the edge of what holds it fails, saying which and by how much.
+#[cfg(target_os = "macos")]
+#[test]
+fn layouts_fit() {
+    use crate::{layout::LibView, live::Pads};
+    use pina_live_engine::stems::Stems;
+    let home = test_home();
+    let files: Vec<PathBuf> = [
+        "Euphoria",
+        "That Night (Extended Afro Mix) feat. Somebody Long",
+        "In Time",
+        "Yours",
+    ]
+    .iter()
+    .map(|n| {
+        let p = home.join(format!("{n}.wav"));
+        write_wav(&p, 6.0);
+        p
+    })
+    .collect();
+    let sizes = [
+        (1440.0, 900.0, false),
+        (1440.0, 900.0, true),
+        (1100.0, 700.0, false),
+        (1100.0, 700.0, true),
+        (1366.0, 768.0, false),
+        (1280.0, 800.0, false),
+        (1600.0, 1000.0, true),
+        (1920.0, 1080.0, false),
+    ];
+    let mut failures = Vec::new();
+    for (w, h, four) in sizes {
+        let mut lib = Library::default();
+        let ids: Vec<u64> = files.iter().map(|f| lib.add_file(f)).collect();
+        let mut cx = gpui::HeadlessAppContext::with_platform(
+            Arc::new(gpui_apple::AppleTextSystem::new()),
+            Arc::new(()),
+            || {
+                Ok(Some(Box::new(
+                    gpui_apple::metal_renderer::MetalHeadlessRenderer::new(),
+                )))
+            },
+        );
+        cx.update(|cx| {
+            cx.text_system()
+                .add_fonts(crate::ui::theme::fonts())
+                .unwrap();
+            crate::ui::text::bind_keys(cx);
+            crate::live::bind_keys(cx);
+        });
+        let rate = 48_000.0;
+        let (e, remote) = engine(rate);
+        let window = cx
+            .open_window(gpui::size(px(w), px(h)), |window, cx| {
+                cx.new(|cx| Live::new(rate, remote, Some(e), lib, window, cx))
+            })
+            .unwrap();
+        let pump = |cx: &mut gpui::HeadlessAppContext, ms: u64| {
+            for _ in 0..(ms / 20).max(1) {
+                cx.advance_clock(Duration::from_millis(20));
+                cx.run_until_parked();
+                thread::sleep(Duration::from_millis(20));
+            }
+        };
+        let shown = if four { 4 } else { 2 };
+        cx.update(|cx| {
+            window
+                .update(cx, |live, _, cx| {
+                    live.four = four;
+                    // Deck D left empty with four decks: an empty deck's card is a state too.
+                    for d in 0..shown.min(3) {
+                        live.load(d, ids[d], cx);
+                    }
+                })
+                .unwrap()
+        });
+        for _ in 0..100 {
+            pump(&mut cx, 40);
+            let done = cx.update(|cx| {
+                window
+                    .read(cx)
+                    .map(|l| l.decks.iter().all(|d| d.loading.is_none()))
+                    .unwrap()
+            });
+            if done {
+                break;
+            }
+        }
+        // B's track parted already; A's being parted.
+        cx.update(|cx| {
+            window
+                .update(cx, |live, _, cx| {
+                    let n = (6.0 * rate) as usize;
+                    let part = || [vec![0.0f32; n], vec![0.0f32; n]];
+                    let stems = Stems::from_parts([part(), part(), part()]);
+                    live.deck(
+                        1,
+                        DeckCmd::Stems {
+                            id: ids[1],
+                            stems: Arc::new(stems),
+                        },
+                    );
+                    live.deck(
+                        0,
+                        DeckCmd::SetHotCue {
+                            slot: 0,
+                            at: Some(rate),
+                        },
+                    );
+                    live.deck(0, DeckCmd::Play);
+                    cx.notify();
+                })
+                .unwrap()
+        });
+        pump(&mut cx, 200);
+        type Set = Box<dyn Fn(&mut Live)>;
+        let modes = |m: Pads| -> Set {
+            Box::new(move |l: &mut Live| l.decks.iter_mut().for_each(|d| d.pads = m))
+        };
+        let scenarios: Vec<(&str, Set)> = vec![
+            ("hot cues", modes(Pads::HotCue)),
+            ("loops", modes(Pads::Loop)),
+            ("rolls", modes(Pads::Roll)),
+            ("jumps", modes(Pads::Jump)),
+            (
+                "stems, A parting",
+                Box::new(move |l: &mut Live| {
+                    l.decks.iter_mut().for_each(|d| d.pads = Pads::Stems);
+                    l.separating = Some(crate::stems::Job::stuck(ids[0], 0.4));
+                }),
+            ),
+            (
+                "stems, none parting",
+                Box::new(|l: &mut Live| {
+                    l.decks.iter_mut().for_each(|d| d.pads = Pads::Stems);
+                    l.separating = None;
+                }),
+            ),
+            (
+                "grid tools, learning",
+                Box::new(|l: &mut Live| {
+                    l.decks.iter_mut().for_each(|d| d.pads = Pads::HotCue);
+                    l.grid_edit = Some(0);
+                    l.learning = true;
+                }),
+            ),
+            (
+                "library shut",
+                Box::new(|l: &mut Live| {
+                    l.grid_edit = None;
+                    l.learning = false;
+                    l.settings.layout.library = LibView::Closed;
+                }),
+            ),
+            (
+                "library full screen",
+                Box::new(|l: &mut Live| l.settings.layout.library = LibView::Full),
+            ),
+            (
+                "the other layer",
+                Box::new(|l: &mut Live| {
+                    l.settings.layout.library = LibView::Open;
+                    l.layer = [2, 3];
+                }),
+            ),
+        ];
+        for (what, set) in &scenarios {
+            cx.update(|cx| {
+                window
+                    .update(cx, |live, _, cx| {
+                        set(live);
+                        live.probes.borrow_mut().clear();
+                        cx.notify();
+                    })
+                    .unwrap()
+            });
+            pump(&mut cx, 40);
+            cx.capture_screenshot(window.into()).unwrap();
+            let probes =
+                cx.update(|cx| window.read(cx).map(|l| l.probes.borrow().clone()).unwrap());
+            let at = format!("{w}x{h} {} decks, {what}", if four { 4 } else { 2 });
+            for spill in crate::probe::spills(&probes) {
+                failures.push(format!("{at}: {spill}"));
+            }
+            // And nothing past the window's own edges.
+            for (name, b) in &probes {
+                let (r, bt) = (
+                    f32::from(b.origin.x + b.size.width),
+                    f32::from(b.origin.y + b.size.height),
+                );
+                if r > w + 0.5 || bt > h + 0.5 {
+                    failures.push(format!(
+                        "{at}: {name} goes past the window ({r:.0}, {bt:.0})"
+                    ));
+                }
+            }
+            // What should be there, is.
+            let full = what.contains("full screen");
+            for d in 0..2 {
+                if !full
+                    && !probes
+                        .keys()
+                        .any(|k| k == &format!("deck{d}") || k == &format!("deck{}", d + 2))
+                {
+                    failures.push(format!("{at}: no card for deck {d}'s side"));
+                }
+            }
+            if full && probes.keys().any(|k| k.starts_with("deck")) {
+                failures.push(format!("{at}: decks drawn under the full-screen library"));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} spills:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+/// The edges between panels, dragged, size them; double-clicked, they're back as they were;
+/// the library shuts, opens and goes full screen by its keys.
+#[gpui::test]
+fn panels_resize_and_the_library_shuts(cx: &mut gpui::TestAppContext) {
+    use crate::layout::{Layout, LibView};
+    use gpui::{Modifiers, MouseButton};
+    test_home();
+    cx.update(|cx| {
+        crate::ui::text::bind_keys(cx);
+        crate::live::bind_keys(cx);
+    });
+    let rate = 48_000.0;
+    let (e, remote) = engine(rate);
+    let (live, cx) = cx.add_window_view(|window, cx| {
+        Live::new(rate, remote, Some(e), Library::default(), window, cx)
+    });
+    cx.run_until_parked();
+    let grip = |live: &gpui::Entity<Live>, cx: &mut gpui::VisualTestContext, name: &str| {
+        live.read_with(cx, |l, _| l.probes.borrow()[name].center())
+    };
+    let drag = |cx: &mut gpui::VisualTestContext,
+                from: gpui::Point<gpui::Pixels>,
+                by: gpui::Point<gpui::Pixels>| {
+        cx.simulate_mouse_down(from, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_move(from + by, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_up(from + by, MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+    };
+    // The waveforms: 30 px down is 15 px a waveform (two of them).
+    let before = live.read_with(cx, |l, _| l.wave_h);
+    let at = grip(&live, cx, "grip Waves");
+    drag(cx, at, gpui::point(px(0.), px(-30.)));
+    let after = live.read_with(cx, |l, _| l.settings.layout.waves);
+    assert!((after - (before - 15.0)).abs() < 0.5, "{before} → {after}");
+    // The library's sidebar.
+    let side = live.read_with(cx, |l, _| l.settings.layout.side);
+    let at = grip(&live, cx, "grip Side");
+    drag(cx, at, gpui::point(px(60.), px(0.)));
+    assert_eq!(
+        live.read_with(cx, |l, _| l.settings.layout.side),
+        side + 60.0
+    );
+    // Double-clicked, back as it was.
+    let at = grip(&live, cx, "grip Side");
+    cx.simulate_event(gpui::MouseDownEvent {
+        button: MouseButton::Left,
+        position: at,
+        modifiers: Modifiers::none(),
+        click_count: 2,
+        first_mouse: false,
+    });
+    cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::none());
+    cx.run_until_parked();
+    assert_eq!(
+        live.read_with(cx, |l, _| l.settings.layout.side),
+        Layout::default().side
+    );
+    // The library by its keys.
+    let lib = |live: &gpui::Entity<Live>, cx: &mut gpui::VisualTestContext| {
+        live.read_with(cx, |l, _| l.settings.layout.library)
+    };
+    cx.simulate_keystrokes("cmd-l");
+    assert_eq!(lib(&live, cx), LibView::Closed);
+    cx.simulate_keystrokes("cmd-l");
+    assert_eq!(lib(&live, cx), LibView::Open);
+    cx.simulate_keystrokes("cmd-shift-l");
+    assert_eq!(lib(&live, cx), LibView::Full);
+    cx.simulate_keystrokes("escape");
+    assert_eq!(lib(&live, cx), LibView::Open);
 }

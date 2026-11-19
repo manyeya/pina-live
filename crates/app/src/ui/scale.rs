@@ -6,6 +6,9 @@
 //! laid out, for views (a text field) that build themselves then. A picture drawn in the
 //! window's own units (not its box's) is a `scaled_canvas`, which keeps the scale while it draws.
 
+// Copied whole from Pina Studio so the two apps look alike: some of it Pina Live doesn't use.
+#![allow(dead_code)]
+
 use std::{cell::Cell, panic::Location};
 
 use gpui::{
