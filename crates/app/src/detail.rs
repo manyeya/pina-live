@@ -117,8 +117,19 @@ pub fn knob(value: f32, size: f32, color: u32, bipolar: bool) -> impl IntoElemen
             {
                 window.paint_path(lit, rgb(color));
             }
-            // The cap: lit from above, a hairline rim.
+            // The cap: its shadow under it, lit from above, a hairline rim, and (big enough to
+            // see) ridged round its edge to grip, as a mixer's rubber caps are.
             let body = r - thick / 2.0 - 1.5;
+            window.paint_quad(
+                gpui::fill(
+                    Bounds::centered_at(
+                        point(c.x, c.y + px(1.5)),
+                        gpui::size(px(body * 2.0 + 1.0), px(body * 2.0 + 1.0)),
+                    ),
+                    gpui::hsla(0.0, 0.0, 0.0, 0.45),
+                )
+                .corner_radii(px(body + 0.5)),
+            );
             window.paint_quad(
                 gpui::fill(
                     Bounds::centered_at(c, gpui::size(px(body * 2.0), px(body * 2.0))),
@@ -132,6 +143,17 @@ pub fn knob(value: f32, size: f32, color: u32, bipolar: bool) -> impl IntoElemen
                 .border_widths(px(1.))
                 .border_color(rgb(0x4a4a55)),
             );
+            if size >= 30.0 {
+                for k in 0..36 {
+                    let deg = k as f32 * 10.0;
+                    let mut g = gpui::PathBuilder::stroke(px(1.));
+                    g.move_to(at(deg, body - 2.5));
+                    g.line_to(at(deg, body - 0.75));
+                    if let Ok(p) = g.build() {
+                        window.paint_path(p, gpui::hsla(0.0, 0.0, 1.0, 0.07));
+                    }
+                }
+            }
             let mut pointer = gpui::PathBuilder::stroke(px(if size >= 30.0 { 2.0 } else { 1.75 }));
             pointer.move_to(at(to, body * 0.25));
             pointer.line_to(at(to, body * 0.92));

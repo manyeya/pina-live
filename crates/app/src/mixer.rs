@@ -20,6 +20,14 @@ use crate::{
 /// The crossfader card's height.
 const XF_H: f32 = 40.0;
 
+/// A channel's knobs' sizes: trim, each EQ band, the filter.
+#[derive(Clone, Copy, Debug)]
+pub struct Knobs {
+    pub trim: f32,
+    pub eq: f32,
+    pub filter: f32,
+}
+
 /// Level meters fall back this much each frame (of 30 a second).
 const FALL: f32 = 0.82;
 
@@ -95,25 +103,57 @@ impl Live {
             .child(self.crossfader(cx))
     }
 
-    /// What the decks' height leaves a channel's fader (its other parts all fixed), and the
-    /// master's meter.
-    fn mixer_budget(&self) -> (f32, f32) {
+    /// A channel's knob sizes, and what the decks' height leaves its fader (its other parts all
+    /// fixed) and the master's meter. The knobs are as big as the room allows while the fader
+    /// keeps a usable throw: trim smallest, the EQ bigger, the filter biggest, as on a mixer.
+    fn mixer_budget(&self) -> (f32, f32, Knobs) {
         let compact = self.narrow;
         // The strips' row, less each strip's border and a hair for type's rounding.
         let room = self.panel_h - XF_H - 8.0 - 2.0 - 4.0;
-        let strip = match compact {
-            true => 16.0 + 20.0 + 5.0 * 24.0 + 20.0 + 22.0 + 2.0 + 14.0 + 9.0 * 3.0,
-            false => 16.0 + 20.0 + 5.0 * 30.0 + 20.0 + 24.0 + 2.0 + 14.0 + 9.0 * 5.0,
+        // Everything but the knobs: padding, the deck's chip, three dividers, the EQ's panel
+        // (padding, gaps and border), the sends and cue, the fader's top, its dB, and the gaps between.
+        let fixed = match compact {
+            true => 16.0 + 20.0 + 3.0 + 12.0 + 20.0 + 2.0 + 14.0 + 9.0 * 3.0,
+            false => 16.0 + 20.0 + 3.0 + 12.0 + 22.0 + 2.0 + 14.0 + 9.0 * 5.0,
         };
+        let tiers: &[(f32, f32, f32)] = match (compact, self.four) {
+            (false, _) => &[
+                (32., 46., 50.),
+                (30., 42., 46.),
+                (28., 38., 42.),
+                (26., 34., 38.),
+                (24., 30., 34.),
+            ],
+            (true, false) => &[
+                (28., 38., 42.),
+                (26., 34., 38.),
+                (24., 30., 34.),
+                (22., 26., 30.),
+                (20., 24., 26.),
+            ],
+            (true, true) => &[
+                (26., 32., 34.),
+                (24., 30., 32.),
+                (22., 26., 28.),
+                (20., 24., 26.),
+            ],
+        };
+        let least = if compact { 64.0 } else { 80.0 };
+        let fits = |t: &(f32, f32, f32)| room - fixed - (t.0 + 3.0 * t.1 + t.2) >= least;
+        let &(trim, eq, filter) = tiers
+            .iter()
+            .find(|t| fits(t))
+            .unwrap_or(tiers.last().unwrap());
         let master = match compact {
             // Its name, knob, label and the cue mix and phones knobs, as drawn (measured).
             true => 20.0 + 12.0 + 32.0 + 12.0 + 40.0 + 4.0 * 6.0 + 6.0,
             false => 20.0 + 12.0 + 40.0 + 12.0 + 40.0 + 4.0 * 10.0 + 10.0,
         };
         (
-            (room - strip).max(36.0),
+            (room - fixed - (trim + 3.0 * eq + filter)).max(36.0),
             // The master's meter fills its card: no gap under it.
             (room - master).max(48.0),
+            Knobs { trim, eq, filter },
         )
     }
 
@@ -123,16 +163,21 @@ impl Live {
         let compact = self.narrow;
         let four = self.four;
         let color = DECK_COLORS[ch];
-        let w = if four { 82.0 } else { 104.0 };
-        let ks = if compact { 22.0 } else { 28.0 };
+        let w = if four { 82.0 } else { 116.0 };
+        let (fh, _, k) = self.mixer_budget();
         // A knob's row: its name and what it reads (compact, what it reads while it's turned).
-        let row = |label: &'static str, ctl: Ctl, lit: u32, cx: &mut Context<Self>| {
+        let row = |label: &'static str,
+                   ctl: Ctl,
+                   lit: u32,
+                   ks: f32,
+                   ends: (&'static str, &'static str),
+                   cx: &mut Context<Self>| {
             let turning = self.turning(ctl);
             let v = self.ctl_value(ctl);
-            let mut said = crate::detail::value_text(self, ctl, v);
-            if compact {
-                said = said.trim_end_matches(" dB").to_string();
-            }
+            // In dB unless it says otherwise: the unit's left off beside the knob.
+            let said = crate::detail::value_text(self, ctl, v)
+                .trim_end_matches(" dB")
+                .to_string();
             let (_, _, home) = ctl.range();
             let moved = (v - home).abs() > 0.01;
             let reads = div()
@@ -148,9 +193,34 @@ impl Live {
                     _ => TEXT_4,
                 }))
                 .child(said);
+            // The knob with its scale's ends printed at the ends of its sweep (not compact).
+            let side = if compact { 0.0 } else { 9.0 };
+            let end = |t: &'static str, left: bool| {
+                div()
+                    .absolute()
+                    .top(px(ks * 0.66))
+                    .w(px(side + 2.0))
+                    .when(left, |d| d.left(px(-2.)))
+                    .when(!left, |d| d.right(px(-2.)).flex().justify_end())
+                    .font_family(MONO)
+                    .text_size(px(7.))
+                    .text_color(rgb(TEXT_4))
+                    .child(t)
+            };
+            let knob = div()
+                .relative()
+                .w(px(ks + 2.0 * side))
+                .h(px(ks))
+                .flex()
+                .justify_center()
+                .flex_none()
+                .child(self.knob(ctl, "", lit, ks, cx))
+                .when(!compact, |d| {
+                    d.child(end(ends.0, true)).child(end(ends.1, false))
+                });
             div()
-                .w(px(w - 20.0))
-                .h(px(if compact { 24. } else { 30. }))
+                .w(px(w - 16.0))
+                .h(px(ks))
                 .flex()
                 .items_center()
                 .justify_between()
@@ -176,8 +246,10 @@ impl Live {
                         )
                         .child(reads),
                 })
-                .child(self.knob(ctl, "", lit, ks, cx))
+                .child(knob)
         };
+        // A printed line between sections, as on a mixer's faceplate.
+        let rule = || div().w(px(w - 16.0)).h(px(1.)).flex_none().bg(rgb(LINE));
         let eq = |b: usize| {
             if self.mix.eq[ch][b] < 0.01 {
                 RECORD
@@ -187,15 +259,14 @@ impl Live {
         };
         let side = self.mix.side[ch];
         let cue = self.mix.cue[ch];
-        let fh = self.mixer_budget().0;
         let gain = pina_live_engine::mixer::fader_gain(self.mix.fader[ch], 0.6);
         let db = 20.0 * gain.max(1e-6).log10();
         let send = |u: usize, cx: &mut Context<Self>| {
             let on = self.fx[u].on[ch];
             let ringing = on && self.fx[u].settings.on;
             div()
-                .h(px(20.))
-                .px(px(5.))
+                .h(px(if compact { 20. } else { 22. }))
+                .px(px(if compact { 3. } else { 6. }))
                 .flex()
                 .items_center()
                 .rounded(px(4.))
@@ -281,54 +352,76 @@ impl Live {
                         }),
                     ),
             )
-            .child(row("TRIM", Ctl::Trim(ch), TEXT_2, cx))
-            .child(row("HIGH", Ctl::Eq(ch, 2), eq(2), cx))
-            .child(row("MID", Ctl::Eq(ch, 1), eq(1), cx))
-            .child(row("LOW", Ctl::Eq(ch, 0), eq(0), cx))
-            .child(row("FILTER", Ctl::Filter(ch), ACCENT, cx))
+            .child(row("TRIM", Ctl::Trim(ch), TEXT_2, k.trim, ("−", "+"), cx))
+            .child(rule())
+            // The EQ, sunk in a panel of its own.
             .child(
                 div()
+                    .w(px(w - 10.0))
+                    .py(px(3.))
+                    .px(px(3.))
                     .flex()
-                    .gap(px(4.))
-                    .child(send(0, cx))
-                    .child(send(1, cx)),
+                    .flex_col()
+                    .items_center()
+                    .gap(px(2.))
+                    .rounded(px(6.))
+                    .bg(alpha(0x000000, 0.22))
+                    .border_1()
+                    .border_color(rgb(LINE_SOFT))
+                    .child(row("HIGH", Ctl::Eq(ch, 2), eq(2), k.eq, ("−∞", "+6"), cx))
+                    .child(row("MID", Ctl::Eq(ch, 1), eq(1), k.eq, ("−∞", "+6"), cx))
+                    .child(row("LOW", Ctl::Eq(ch, 0), eq(0), k.eq, ("−∞", "+6"), cx)),
             )
+            .child(rule())
+            .child(row(
+                "FILTER",
+                Ctl::Filter(ch),
+                ACCENT,
+                k.filter,
+                ("LP", "HP"),
+                cx,
+            ))
+            .child(rule())
+            // Its FX sends and cue together, over its fader.
             .child(
                 div()
-                    .h(px(if compact { 22. } else { 24. }))
-                    .w(px(w - 30.0))
                     .flex()
                     .items_center()
-                    .justify_center()
-                    .gap(px(5.))
-                    .rounded(px(5.))
-                    .cursor_pointer()
-                    .text_size(px(11.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .when(cue, |d| d.bg(rgb(AMBER)).text_color(rgb(0x0c0c0f)))
-                    .when(!cue, |d| {
-                        d.border_1()
-                            .border_color(rgb(LINE))
-                            .text_color(rgb(TEXT_3))
-                            .hover(|s| s.text_color(rgb(TEXT_2)))
-                    })
-                    .child(icon(Icon::Headphones, 12.).text_color(rgb(if cue {
-                        0x0c0c0f
-                    } else {
-                        TEXT_3
-                    })))
-                    .child("Cue")
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |live, _, _, cx| {
-                            if live.arm(crate::midi::Target::Pfl(ch), cx) {
-                                return;
-                            }
-                            let on = !live.mix.cue[ch];
-                            live.mix.cue[ch] = on;
-                            live.mixer(MixCmd::Cue { ch, on });
-                            cx.notify();
-                        }),
+                    .gap(px(if compact { 3. } else { 4. }))
+                    .child(send(0, cx))
+                    .child(send(1, cx))
+                    .child(
+                        div()
+                            .h(px(if compact { 20. } else { 22. }))
+                            .w(px(if compact { 22. } else { 28. }))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(5.))
+                            .cursor_pointer()
+                            .when(cue, |d| d.bg(rgb(AMBER)))
+                            .when(!cue, |d| {
+                                d.border_1()
+                                    .border_color(rgb(LINE))
+                                    .hover(|s| s.border_color(rgb(LINE_STRONG)))
+                            })
+                            .child(icon(Icon::Headphones, 13.).text_color(rgb(if cue {
+                                0x0c0c0f
+                            } else {
+                                TEXT_3
+                            })))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |live, _, _, cx| {
+                                    if live.arm(crate::midi::Target::Pfl(ch), cx) {
+                                        return;
+                                    }
+                                    let on = !live.mix.cue[ch];
+                                    live.mix.cue[ch] = on;
+                                    live.mixer(MixCmd::Cue { ch, on });
+                                    cx.notify();
+                                }),
+                            ),
                     ),
             )
             .child(

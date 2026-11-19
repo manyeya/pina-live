@@ -157,7 +157,10 @@ fn the_pitch_fader_snaps_to_zero_unless_shift_is_held(cx: &mut gpui::TestAppCont
     };
     live.update(cx, |live, cx| {
         assert_eq!(to(live, false, cx), 0.0, "snapped to 0");
-        assert!(to(live, true, cx).abs() > 0.001, "Shift passes the detent by");
+        assert!(
+            to(live, true, cx).abs() > 0.001,
+            "Shift passes the detent by"
+        );
     });
 }
 
