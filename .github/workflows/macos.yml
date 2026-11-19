@@ -1,0 +1,54 @@
+# Pina Live for macOS (Apple silicon): tested, built, made into Pina Live.app (signed ad hoc, or
+# with the Developer ID in the PINA_SIGN_ID secret), zipped and kept with the run; for a release
+# tag vX.Y.Z, put on that tag's release too. Run it by hand (Actions, macOS, Run workflow) for a
+# build of any branch.
+name: macOS
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-14
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # layouts_fit draws the window with Metal, which the hosted runners don't give a test.
+      - name: Test
+        run: cargo test --workspace -- --skip layouts_fit
+
+      - name: Build Pina Live.app
+        env:
+          PINA_SIGN_ID: ${{ secrets.PINA_SIGN_ID }}
+        run: |
+          cargo build --release -p pina-live
+          mkdir -p dist
+          scripts/mac-app.sh target/release/pina-live "dist/Pina Live.app"
+          VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          ditto -c -k --keepParent "dist/Pina Live.app" "dist/PinaLive-$VERSION-macos-arm64.zip"
+          rm -rf "dist/Pina Live.app"
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PinaLive-macos-arm64
+          path: dist/*
+
+      - name: Put it on the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

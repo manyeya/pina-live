@@ -1,0 +1,61 @@
+# Pina Live for Windows (x64): tested, built, packed as a zip with what it needs beside it, and
+# kept with the run; for a release tag vX.Y.Z, put on that tag's release too. Run it by hand
+# (Actions, Windows, Run workflow) for a build of any branch.
+name: Windows
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Build Pina Live
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force staging, dist | Out-Null
+          cargo build --release -p pina-live
+          Copy-Item target\release\pina-live.exe "staging\Pina Live.exe"
+          # Stem separation's ONNX Runtime is linked in, but its DirectML wants the redistributable
+          # DirectML.dll beside the app (newer than Windows's own); ort's build copies it out.
+          $dml = Get-ChildItem target\release -Recurse -Filter DirectML.dll | Select-Object -First 1
+          if ($dml) { Copy-Item $dml.FullName staging\DirectML.dll }
+          # Visual C++'s runtime DLLs, beside the app, so it runs on a PC without them installed.
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          $crt = Get-ChildItem "$vs\VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT\*.dll" |
+            Sort-Object FullName -Descending
+          if (-not ($crt | Where-Object Name -eq 'vcruntime140.dll')) { Write-Error "Visual C++'s runtime DLLs weren't found"; exit 1 }
+          $crt | Group-Object Name | ForEach-Object { Copy-Item $_.Group[0].FullName staging\ }
+          $version = ((cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages |
+            Where-Object name -eq 'pina-live').version
+          Compress-Archive -Path staging\* -DestinationPath "dist\PinaLive-$version-windows-x64.zip"
+          Get-ChildItem staging, dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PinaLive-windows-x64
+          path: dist/*
+
+      - name: Put it on the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

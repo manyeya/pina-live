@@ -43,6 +43,10 @@ fn test_home() -> PathBuf {
     DIR.get_or_init(|| {
         let d = std::env::temp_dir().join(format!("pina-live-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
+        // Tracks loaded here aren't parted on their own: the stand-in models aren't models, and
+        // ONNX Runtime still starting in a thread as the tests exit takes the process down.
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("settings.json"), r#"{"part_on_load": false}"#).unwrap();
         // Three of the models Pina knows, their files' sizes the wrong way round to their
         // speeds (Kim Vocal 2's the quickest, its file here the biggest).
         for (id, bytes) in [
@@ -182,6 +186,7 @@ fn stem_options_pick_their_model() {
 /// --ignored`: the window with those tracks on decks A and B (A playing, looping, cued up),
 /// drawn to `<dir>/<PINA_LIVE_SHOT_PAGE or "decks">.png`. Its library and waveforms are kept
 /// in a folder of its own, never the real one.
+#[cfg(target_os = "macos")]
 #[test]
 #[ignore]
 fn shots() {
