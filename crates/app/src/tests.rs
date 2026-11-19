@@ -165,6 +165,23 @@ fn shots() {
                     on: true,
                 });
                 live.show_settings = page == "settings";
+                if page == "crates" {
+                    let ids: Vec<u64> = live.lib.tracks.iter().map(|t| t.id).collect();
+                    live.lib.crates.push(pina_live_engine::library::Crate {
+                        name: "Sunday warm-up".into(),
+                        tracks: ids[..2].to_vec(),
+                    });
+                    live.lib.crates.push(pina_live_engine::library::Crate {
+                        name: "Afro house peak".into(),
+                        tracks: ids.clone(),
+                    });
+                    live.browser.refresh(&live.lib);
+                    live.grid_edit = Some(0);
+                    live.menu = Some((
+                        crate::crates::Menu::Track(ids[2]),
+                        gpui::point(px(620.), px(760.)),
+                    ));
+                }
                 live.fx_menu = (page == "fxmenu").then_some(1);
                 live.browser.selected = live.lib.tracks.first().map(|t| t.id);
                 cx.notify();

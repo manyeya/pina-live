@@ -191,6 +191,11 @@ pub struct Live {
     pub audio_note: Option<String>,
     pub decks: [DeckUi; DECKS],
     pub four: bool,
+    /// The deck whose beat grid is being set by hand.
+    pub grid_edit: Option<usize>,
+    /// A right-click menu open, and where; a crate being renamed, and its field.
+    pub menu: Option<(crate::crates::Menu, gpui::Point<Pixels>)>,
+    pub renaming: Option<(usize, gpui::Entity<crate::ui::text::TextInput>)>,
     /// The decks drawn compact: four of them, or a window too narrow for two in full.
     pub narrow: bool,
     /// Each waveform's height, made to leave the library room in a short window.
@@ -427,6 +432,9 @@ impl Live {
             audio_note: None,
             decks: std::array::from_fn(|_| DeckUi::new()),
             four: false,
+            grid_edit: None,
+            menu: None,
+            renaming: None,
             narrow: false,
             wave_h: 88.0,
             mix: MixUi::default(),
@@ -902,6 +910,39 @@ impl Live {
         cx.notify();
     }
 
+    /// A deck's beat grid changed by hand (`f` given it and where the track is, seconds): sent,
+    /// kept with the track, and locked from analysis.
+    pub fn edit_grid(&mut self, i: usize, f: fn(&mut pina_live_engine::grid::Grid, f64)) {
+        let now = self.deck_seconds(i);
+        let Some(id) = self.decks[i].track else {
+            return;
+        };
+        let mut g = self.decks[i]
+            .analysis
+            .as_ref()
+            .and_then(|a| a.grid)
+            .unwrap_or_else(|| pina_live_engine::grid::Grid::new(120.0, now));
+        f(&mut g, now);
+        g.bpm = g.bpm.clamp(40.0, 300.0);
+        if let Some(a) = &mut self.decks[i].analysis {
+            a.grid = Some(g);
+        }
+        if let Some(t) = self.lib.get_mut(id) {
+            if let Some(a) = &mut t.analysis {
+                a.grid = Some(g);
+            }
+            t.grid_locked = true;
+        }
+        self.remote.deck(i, DeckCmd::Grid(Some(g)));
+        self.lib_dirty = true;
+        self.browser.refresh(&self.lib);
+    }
+
+    /// The library to be saved on the next tick that saves.
+    pub fn mark_dirty(&mut self) {
+        self.lib_dirty = true;
+    }
+
     pub fn track(&self, id: u64) -> Option<&Track> {
         self.lib.get(id)
     }
@@ -1035,6 +1076,7 @@ impl Render for Live {
             .child(self.fx_bar(cx))
             .child(self.browser_panel(window, cx))
             .when(self.show_settings, |d| d.child(self.settings_panel(cx)))
+            .children(self.menu_overlay(cx))
     }
 }
 

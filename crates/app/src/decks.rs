@@ -11,6 +11,8 @@ use pina_live_engine::{
     engine::Command,
 };
 
+use pina_live_engine::grid::Grid;
+
 use crate::{
     controls::{Ctl, Drag, Hold, pad, pt},
     live::{CUE_COLORS, DECK_COLORS, DECK_NAMES, Live, Pads},
@@ -69,8 +71,11 @@ impl Live {
             .on_drop(cx.listener(move |live, paths: &ExternalPaths, _, cx| {
                 live.dropped(Some(i), paths, cx)
             }))
-            .child(self.deck_header(i, &s))
-            .child(self.overview_strip(i, &s, cx))
+            .child(self.deck_header(i, &s, cx))
+            .child(match self.grid_edit == Some(i) {
+                true => self.grid_tray(i, cx),
+                false => self.overview_strip(i, &s, cx),
+            })
             .child(
                 div()
                     .flex_1()
@@ -96,7 +101,7 @@ impl Live {
             .child(self.transport(i, &s, cx))
     }
 
-    fn deck_header(&self, i: usize, s: &DeckStatus) -> Div {
+    fn deck_header(&self, i: usize, s: &DeckStatus, cx: &mut Context<Self>) -> Div {
         let d = &self.decks[i];
         let color = DECK_COLORS[i];
         let loaded = d.track.is_some();
@@ -184,13 +189,29 @@ impl Live {
                     .flex_col()
                     .items_end()
                     .gap(px(1.))
+                    // Clicked, the beat grid's tools in place of the overview.
                     .child(
                         div()
+                            .px(px(4.))
+                            .rounded(px(4.))
+                            .cursor_pointer()
+                            .hover(|st| st.bg(rgb(RAISED)))
+                            .when(self.grid_edit == Some(i), |d| d.bg(rgb(RAISED)))
                             .font_family(MONO)
                             .text_size(px(17.))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(rgb(if s.sync { ACCENT_TEXT } else { TEXT }))
-                            .child(bpm),
+                            .child(bpm)
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |live, _, _, cx| {
+                                    live.grid_edit = match live.grid_edit == Some(i) {
+                                        true => None,
+                                        false => Some(i),
+                                    };
+                                    cx.notify();
+                                }),
+                            ),
                     )
                     .child(
                         div()
@@ -214,6 +235,63 @@ impl Live {
                                 )
                             }),
                     ),
+            )
+    }
+
+    /// The beat grid's tools: half or double the tempo, nudge it, move the grid, or put the
+    /// downbeat where the track is. Kept with the track (and left alone by analysis after).
+    fn grid_tray(&self, i: usize, cx: &mut Context<Self>) -> Div {
+        let g = self.decks[i].analysis.as_ref().and_then(|a| a.grid);
+        let btn = |label: &'static str, f: fn(&mut Grid, f64), cx: &mut Context<Self>| {
+            seg(label, false, 24.0).px(px(7.)).on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |live, _, _, cx| {
+                    live.edit_grid(i, f);
+                    cx.notify();
+                }),
+            )
+        };
+        div()
+            .h(px(if self.narrow { 54. } else { 62. }))
+            .flex_none()
+            .px(px(10.))
+            .flex()
+            .flex_col()
+            .justify_center()
+            .gap(px(6.))
+            .child(
+                div()
+                    .flex()
+                    .justify_between()
+                    .text_size(px(11.))
+                    .text_color(rgb(TEXT_3))
+                    .child("Beat grid")
+                    .child(
+                        div()
+                            .font_family(MONO)
+                            .text_color(rgb(TEXT_2))
+                            .child(match g {
+                                Some(g) => format!("{:.2} BPM · downbeat {:.3} s", g.bpm, g.anchor),
+                                None => "none yet".into(),
+                            }),
+                    ),
+            )
+            .child(
+                tray()
+                    .child(btn("÷2", |g, _| g.bpm /= 2.0, cx))
+                    .child(btn("×2", |g, _| g.bpm *= 2.0, cx))
+                    .child(btn("−.01", |g, _| g.bpm -= 0.01, cx))
+                    .child(btn("+.01", |g, _| g.bpm += 0.01, cx))
+                    .child(btn("◀", |g, _| g.anchor -= 0.005, cx))
+                    .child(btn("▶", |g, _| g.anchor += 0.005, cx))
+                    .child(btn("Downbeat here", |g, now| g.anchor = now, cx).flex_1())
+                    .child(seg("Done", true, 24.0).px(px(8.)).on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|live, _, _, cx| {
+                            live.grid_edit = None;
+                            cx.notify();
+                        }),
+                    )),
             )
     }
 

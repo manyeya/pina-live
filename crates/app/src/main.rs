@@ -3,6 +3,7 @@
 mod analysis;
 mod browser;
 mod controls;
+mod crates;
 mod decks;
 mod fxbar;
 mod keys;

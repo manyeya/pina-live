@@ -314,18 +314,46 @@ impl Live {
                     }),
                 ),
         );
-        if !lib.crates.is_empty() {
-            col = col.child(heading("CRATES"));
-            for (k, c) in lib.crates.iter().enumerate() {
-                col = col.child(self.side_row(
-                    Icon::Stack,
-                    c.name.clone(),
-                    Some(c.tracks.len()),
-                    src == Source::Crate(k),
-                    Source::Crate(k),
-                    cx,
-                ));
-            }
+        col = col.child(heading("CRATES"));
+        if lib.crates.is_empty() {
+            col = col.child(
+                div()
+                    .px(px(14.))
+                    .text_size(px(11.))
+                    .text_color(rgb(TEXT_4))
+                    .child("Right-click a track to start one."),
+            );
+        }
+        for (k, c) in lib.crates.iter().enumerate() {
+            let row = match self.renaming_field(k) {
+                Some(field) => div()
+                    .h(px(26.))
+                    .mx(px(6.))
+                    .px(px(8.))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .rounded(px(6.))
+                    .bg(rgb(FIELD))
+                    .child(icon(Icon::Stack, 14.).text_color(rgb(TEXT_3)))
+                    .child(div().flex_1().child(field)),
+                None => self
+                    .side_row(
+                        Icon::Stack,
+                        c.name.clone(),
+                        Some(c.tracks.len()),
+                        src == Source::Crate(k),
+                        Source::Crate(k),
+                        cx,
+                    )
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(move |live, e: &MouseDownEvent, _, cx| {
+                            live.open_menu(crate::crates::Menu::Crate(k), e.position, cx)
+                        }),
+                    ),
+            };
+            col = col.child(row);
         }
         col
     }
@@ -560,6 +588,13 @@ impl Live {
             .border_color(rgb(LINE_SOFT))
             .bg(rgb(if on { RAISED } else { BG }))
             .when(!on, |d| d.hover(|s| s.bg(rgb(CARD))))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |live, e: &MouseDownEvent, _, cx| {
+                    live.browser.selected = Some(id);
+                    live.open_menu(crate::crates::Menu::Track(id), e.position, cx);
+                }),
+            )
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |live, e: &MouseDownEvent, _, cx| {
