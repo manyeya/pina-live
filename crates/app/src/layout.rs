@@ -92,13 +92,11 @@ pub struct Sizes {
     pub card: f32,
 }
 
-/// How short and tall the decks can be: never shorter than their controls need; as tall as
-/// the window gives them (their pads, ring and faders grow into it).
-pub fn panel_range(compact: bool) -> (f32, f32) {
-    match compact {
-        true => (330.0, 1200.0),
-        false => (412.0, 1200.0),
-    }
+/// How short and tall the decks can be: never shorter than their controls need, never taller
+/// than they've use for (crate::decks::panel_max).
+pub fn panel_range(compact: bool, four: bool) -> (f32, f32) {
+    let least = if compact { 330.0 } else { 412.0 };
+    (least, crate::decks::panel_max(compact, four).max(least))
 }
 
 pub fn wave_range(rows: usize) -> (f32, f32) {
@@ -117,7 +115,7 @@ pub fn fit(l: &Layout, w: f32, h: f32, rows: usize, four: bool, learning: bool) 
     let card = (w - mixer - (cards + 2.0) * GAP) / cards;
     let compact = four || card < FULL_CARD;
     let n = rows.max(1) as f32;
-    let (pmin, pmax) = panel_range(compact);
+    let (pmin, pmax) = panel_range(compact, four);
     let (wmin, wmax) = wave_range(rows);
     let mut panel = l.panel.clamp(pmin, pmax);
     let mut wave = l.waves.clamp(wmin, wmax);
@@ -135,9 +133,16 @@ pub fn fit(l: &Layout, w: f32, h: f32, rows: usize, four: bool, learning: bool) 
         }
         // Shut: the waveforms as they're set (as long as the decks keep their least), and the
         // decks fill the rest to the bottom: nothing left empty.
+        // At their tallest, the decks leave the rest to the waveforms (and past theirs, take
+        // it back: nothing's left empty).
         LibView::Closed => {
             wave = wave.min(((h - fixed - pmin) / n).max(wmin));
-            panel = (h - fixed - wave * n).max(pmin);
+            panel = (h - fixed - wave * n).clamp(pmin, pmax);
+            wave = ((h - fixed - panel) / n).max(wave);
+            if wave > wmax {
+                wave = wmax;
+                panel = (h - fixed - wave * n).max(pmin);
+            }
         }
         LibView::Full => {}
     }
@@ -245,7 +250,7 @@ impl Live {
                 l.waves = (value + by / rows).clamp(lo, hi);
             }
             Edge::Panel => {
-                let (lo, hi) = panel_range(narrow);
+                let (lo, hi) = panel_range(narrow, self.four);
                 l.panel = (value + by).clamp(lo, hi);
             }
             Edge::Side => {
@@ -284,16 +289,17 @@ mod tests {
         // Short: the waveforms give way, then the decks, never past their least.
         let s = fit(&l, 1100.0, 700.0, 2, false, false);
         assert!(s.compact && !s.layered);
-        let (pmin, _) = panel_range(true);
+        let (pmin, _) = panel_range(true, false);
         assert!(s.panel >= pmin && s.wave >= 36.0);
-        // Library shut: the waveforms as set, the decks down to the window's foot.
+        // Library shut: the decks at their tallest, the waveforms the rest, nothing empty.
         let shut = Layout {
             library: LibView::Closed,
             ..l
         };
         let s = fit(&shut, 1440.0, 900.0, 2, false, false);
         let fixed = TOP_H + FX_BAR_H + 2.0 * GAP + 2.0;
-        assert_eq!(s.wave, 76.0);
+        assert_eq!(s.panel, crate::decks::panel_max(false, false));
+        assert!(s.wave > 76.0, "{}", s.wave);
         assert!(
             (s.wave * 2.0 + s.panel - (900.0 - fixed)).abs() < 0.5,
             "{}",
@@ -305,7 +311,10 @@ mod tests {
             ..shut
         };
         let s = fit(&tall, 1440.0, 700.0, 2, false, false);
-        assert!(s.panel >= panel_range(false).0 && s.wave < 260.0, "{s:?}");
+        assert!(
+            s.panel >= panel_range(false, false).0 && s.wave < 260.0,
+            "{s:?}"
+        );
         // Four decks in a narrow window go two a side.
         assert!(fit(&l, 1300.0, 900.0, 4, true, false).layered);
         assert!(!fit(&l, 1600.0, 900.0, 4, true, false).layered);

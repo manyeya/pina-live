@@ -265,8 +265,10 @@ impl Live {
                 .when(!compact, |d| {
                     d.child(end(ends.0, true)).child(end(ends.1, false))
                 });
+            // Its name and its knob together, centred in the strip (not pushed to its edges).
+            let label_w = if compact { 30.0 } else { 40.0 };
             div()
-                .w(px(rw))
+                .w(px(rw.min(label_w + ks + 2.0 * side + 10.0)))
                 .h(px(ks))
                 .flex()
                 .items_center()
@@ -465,11 +467,12 @@ impl Live {
             // Its FX sends and cue together, over its fader.
             .child(
                 div()
+                    .w(px(w - 16.0))
                     .flex()
                     .items_center()
                     .gap(px(if compact { 3. } else { 4. }))
-                    .child(send(0, cx))
-                    .child(send(1, cx))
+                    .child(send(0, cx).flex_1().justify_center())
+                    .child(send(1, cx).flex_1().justify_center())
                     .child(
                         div()
                             .h(px(if compact { 20. } else { 22. }))
@@ -510,14 +513,15 @@ impl Live {
                     .flex()
                     .items_end()
                     .gap(px(5.))
-                    .child(self.fader(Ctl::Fader(ch), fh, 30.0, cx))
+                    // Sized to the strip, as the knobs are.
+                    .child(self.fader(Ctl::Fader(ch), fh, (w * 0.24).clamp(30.0, 40.0), cx))
                     .child(meter_n(
                         self.meters[ch],
                         self.holds[ch].map(|h| h.0),
                         self.clips[ch] > 0,
                         fh - 2.0,
                         if compact { 12 } else { 16 },
-                        3.0,
+                        (w * 0.028).clamp(3.0, 5.0),
                     ))
                     .when(!four, |d| {
                         d.child(

@@ -54,17 +54,36 @@ pub struct Budget {
 }
 
 /// The tallest a pad grows.
-const PAD_MAX: f32 = 64.0;
+const PAD_MAX: f32 = 72.0;
+/// How much taller than its least the overview grows, at most.
+const OVER_EXTRA: f32 = 60.0;
+
+/// The pads' column but the pads: captions, the mode keys (or four decks' dropdown), the loop.
+fn column_h(compact: bool, four: bool) -> f32 {
+    match (compact, four) {
+        (false, _) => 12.0 + 6.0 + 32.0 + 6.0 + 6.0 + 6.0 + 14.0 + 6.0 + ROW_H,
+        (true, false) => 32.0 + 6.0 + 6.0 + 6.0 + ROW_H,
+        (true, true) => 26.0 + 6.0 + 6.0 + 6.0 + ROW_H,
+    }
+}
+
+/// The tallest a deck's card is worth being: its pads at their tallest, its overview a little
+/// taller than its least. Past that the waveforms over the decks take the room.
+pub fn panel_max(compact: bool, four: bool) -> f32 {
+    2.0 + HEADER_H
+        + transport_h(compact)
+        + BODY_PT
+        + BODY_PB
+        + over_h(compact)
+        + OVER_EXTRA
+        + column_h(compact, four)
+        + 2.0 * PAD_MAX
+}
 /// The loop's row (and keylock and slip's, in line with it).
 pub const ROW_H: f32 = 34.0;
 
 pub fn budget(panel: f32, compact: bool, four: bool, card_w: f32) -> Budget {
-    // The pads' column: the captions, the mode's tabs (or, four decks, its dropdown), the loop.
-    let column = match (compact, four) {
-        (false, _) => 12.0 + 6.0 + 32.0 + 6.0 + 6.0 + 6.0 + 14.0 + 6.0 + ROW_H,
-        (true, false) => 32.0 + 6.0 + 6.0 + 6.0 + ROW_H,
-        (true, true) => 26.0 + 6.0 + 6.0 + 6.0 + ROW_H,
-    };
+    let column = column_h(compact, four);
     let fixed = 2.0 + HEADER_H + transport_h(compact) + BODY_PT + BODY_PB;
     let inner = panel - fixed - over_h(compact);
     let pad = ((inner - column) / 2.0).max(22.0);
