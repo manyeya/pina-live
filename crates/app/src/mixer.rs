@@ -144,10 +144,13 @@ impl Live {
             .iter()
             .find(|t| fits(t))
             .unwrap_or(tiers.last().unwrap());
+        // The master's strip but its meter: padding, its name, knob and level, two rules, the
+        // limiter's readout, the headphones' icon and two knobs (captioned), and the gaps.
         let master = match compact {
-            // Its name, knob, label and the cue mix and phones knobs, as drawn (measured).
-            true => 20.0 + 12.0 + 32.0 + 12.0 + 40.0 + 4.0 * 6.0 + 6.0,
-            false => 20.0 + 12.0 + 40.0 + 12.0 + 40.0 + 4.0 * 10.0 + 10.0,
+            // (Less what the channels' strips run past the room: measured, so the master ends
+            // level with them.)
+            true => 20.0 + 12.0 + 28.0 + 12.0 + 2.0 + 12.0 + 12.0 + 34.0 + 9.0 * 4.0 - 3.0,
+            false => 20.0 + 12.0 + 34.0 + 12.0 + 2.0 + 12.0 + 12.0 + 34.0 + 9.0 * 6.0 - 5.0,
         };
         (
             (room - fixed - (trim + 3.0 * eq + filter)).max(36.0),
@@ -476,14 +479,29 @@ impl Live {
         let compact = self.narrow;
         let limiting = self.reduction > 0.5;
         let mh = self.mixer_budget().1;
+        let w = if self.four { 60. } else { 68. };
+        let segs = if compact { 16 } else { 24 };
+        let rule = || div().w(px(w - 16.0)).h(px(1.)).flex_none().bg(rgb(LINE));
+        let small = |t: String, c: u32| {
+            div()
+                .h(px(12.))
+                .line_height(px(12.))
+                .font_family(MONO)
+                .text_size(px(9.))
+                .text_color(rgb(c))
+                .child(t)
+        };
+        let level = crate::detail::value_text(self, Ctl::Master, self.mix.master)
+            .trim_end_matches(" dB")
+            .to_string();
         div()
             .relative()
-            .w(px(if self.four { 96. } else { 112. }))
+            .w(px(w))
             .flex_none()
             .flex()
             .flex_col()
             .items_center()
-            .gap(px(if compact { 6. } else { 10. }))
+            .gap(px(if compact { 4. } else { 6. }))
             .py(px(10.))
             .rounded(px(8.))
             .bg(rgb(STRIP))
@@ -491,21 +509,30 @@ impl Live {
             .border_color(rgb(LINE))
             .child(probe(&self.probes, "mixer.strips.master"))
             .child(caption("MASTER"))
-            .child(self.knob(Ctl::Master, "", TEXT, if compact { 32. } else { 40. }, cx))
+            .child(self.knob(Ctl::Master, "", TEXT, if compact { 28. } else { 34. }, cx))
+            .child(small(
+                level,
+                if self.mix.master.abs() > 0.05 {
+                    TEXT_2
+                } else {
+                    TEXT_4
+                },
+            ))
+            .child(rule())
+            // The level out: the limiter's reduction down from the top, the two sides, the scale.
             .child(
                 div()
                     .flex()
                     .items_end()
-                    .gap(px(5.))
-                    // What the limiter's taking off, down from the top: 0 to 12 dB.
-                    .child(gr_meter(self.reduction, mh, if compact { 16 } else { 24 }))
+                    .gap(px(3.))
+                    .child(gr_meter(self.reduction, mh, segs))
                     .child(meter_n(
                         self.meters[DECKS],
                         self.holds[DECKS].map(|h| h.0),
                         self.clips[DECKS] > 0,
                         mh,
-                        if compact { 16 } else { 24 },
-                        5.0,
+                        segs,
+                        4.0,
                     ))
                     .child(
                         div()
@@ -514,7 +541,7 @@ impl Live {
                             .flex_col()
                             .justify_between()
                             .font_family(MONO)
-                            .text_size(px(8.))
+                            .text_size(px(7.5))
                             .text_color(rgb(TEXT_4))
                             .child("+3")
                             .child("0")
@@ -523,22 +550,22 @@ impl Live {
                             .child("−48"),
                     ),
             )
-            .child(
-                div()
-                    .font_family(MONO)
-                    .text_size(px(9.5))
-                    .text_color(rgb(if limiting { AMBER } else { TEXT_4 }))
-                    .child(match limiting {
-                        true => format!("Limiting −{:.1}", self.reduction),
-                        false => "Limiter".into(),
-                    }),
-            )
+            .child(small(
+                match limiting {
+                    true => format!("LIM −{:.1}", self.reduction),
+                    false => "LIM".into(),
+                },
+                if limiting { AMBER } else { TEXT_4 },
+            ))
+            .child(rule())
+            // The headphones: what's cued against the master, and how loud.
+            .child(icon(Icon::Headphones, 12.).text_color(rgb(TEXT_3)))
             .child(
                 div()
                     .flex()
-                    .gap(px(10.))
-                    .child(self.knob(Ctl::CueMix, "CUE MIX", AMBER, 26.0, cx))
-                    .child(self.knob(Ctl::Phones, "PHONES", AMBER, 26.0, cx)),
+                    .gap(px(4.))
+                    .child(self.knob(Ctl::CueMix, "MIX", AMBER, 22.0, cx))
+                    .child(self.knob(Ctl::Phones, "LEVEL", AMBER, 22.0, cx)),
             )
             .child(mark(&self.probes, "mixer.strips.master.end"))
     }

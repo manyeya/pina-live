@@ -24,7 +24,7 @@ pub const LIB_MIN: f32 = 170.0;
 pub const LAYERED_BELOW: f32 = 1400.0;
 pub const FULL_CARD: f32 = 480.0;
 /// The mixer's width with two channels and four.
-pub const MIXER_W: [f32; 2] = [384.0, 456.0];
+pub const MIXER_W: [f32; 2] = [340.0, 420.0];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LibView {

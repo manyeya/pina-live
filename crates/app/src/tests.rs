@@ -649,6 +649,16 @@ fn layouts_fit() {
                     }
                 }
             }
+            // The master's strip ends level with the channels' (no gap under it).
+            let foot = |k: &str| probes.get(k).map(|b| f32::from(b.origin.y + b.size.height));
+            if let (Some(m), Some(c)) = (foot("mixer.strips.master"), foot("mixer.strips.strip0"))
+                && (m - c).abs() > 1.0
+            {
+                failures.push(format!(
+                    "{at}: the master ends {:.1}px off the channels",
+                    m - c
+                ));
+            }
             // What should be there, is.
             let full = what.contains("full screen");
             for d in 0..2 {
