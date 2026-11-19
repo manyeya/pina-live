@@ -447,7 +447,7 @@ fn paint_scrolling(v: &View, b: Bounds<Pixels>, window: &mut Window, cx: &mut Ap
 }
 
 /// A phrase's color, by what it's called: quiet for the ends, warm for what's loud.
-fn phrase_color(name: &str) -> u32 {
+pub fn phrase_color(name: &str) -> u32 {
     let n = name.to_lowercase();
     if n.starts_with("intro") || n.starts_with("outro") {
         SLATE

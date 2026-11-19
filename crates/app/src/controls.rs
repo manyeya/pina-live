@@ -609,30 +609,103 @@ impl Live {
     }
 }
 
-/// A pad: lit in `color` when `on`, its label in the middle.
+/// A performance pad: lit in `color` when `on`, its label in the middle.
 pub fn pad(label: impl Into<gpui::SharedString>, color: Option<u32>, on: bool, h: f32) -> Div {
-    let (bg, fg, border) = match (color, on) {
-        (Some(c), true) => (c, 0x0c0c0f, c),
-        (Some(c), false) => (CARD, c, LINE),
-        (None, true) => (RAISED, TEXT, LINE_STRONG),
-        (None, false) => (CARD, TEXT_3, LINE),
+    pad_with(label, None, color, on, h)
+}
+
+/// `c` darkened to `k` of itself.
+fn shade(c: u32, k: f32) -> u32 {
+    let ch = |shift: u32| ((((c >> shift) & 0xff) as f32 * k).round() as u32).min(255);
+    (ch(16) << 16) | (ch(8) << 8) | ch(0)
+}
+
+/// A performance pad, as a controller's rubber pads are: lit from within. Set (it has a
+/// `color`), its edge glows dimly and an LED strip along its foot is lit; playing or held
+/// (`on`), it's lit right through with a glow round it. Its label in the middle, a detail (a hot
+/// cue's time) in its corner.
+pub fn pad_with(
+    label: impl Into<gpui::SharedString>,
+    detail: Option<String>,
+    color: Option<u32>,
+    on: bool,
+    h: f32,
+) -> Div {
+    let (top, bottom) = match (color, on) {
+        (Some(c), true) => (c, shade(c, 0.72)),
+        (None, true) => (0x3c3c46, 0x2c2c34),
+        _ => (0x26262c, 0x1a1a1f),
+    };
+    let border: gpui::Hsla = match (color, on) {
+        (Some(c), true) => rgb(c).into(),
+        (Some(c), false) => alpha(c, 0.4),
+        (None, true) => rgb(0x5a5a66).into(),
+        (None, false) => rgb(0x303038).into(),
+    };
+    let fg = match (color, on) {
+        (Some(_), true) => 0x0c0c0f,
+        (Some(c), false) => c,
+        (None, true) => TEXT,
+        (None, false) => TEXT_3,
     };
     div()
+        .relative()
         .flex_1()
         .min_w(px(0.))
         .h(px(h))
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(5.))
+        .rounded(px(6.))
         .border_1()
-        .border_color(rgb(border))
-        .bg(rgb(bg))
+        .border_color(border)
+        .bg(gpui::linear_gradient(
+            180.0,
+            gpui::linear_color_stop(rgb(top), 0.0),
+            gpui::linear_color_stop(rgb(bottom), 1.0),
+        ))
         .text_color(rgb(fg))
-        .text_size(px(11.))
+        .text_size(px(if h >= 40.0 { 13. } else { 11. }))
         .font_family(MONO)
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .cursor_pointer()
-        .when(!on, |d| d.hover(|s| s.border_color(rgb(LINE_STRONG))))
+        .when_some(color.filter(|_| on), |d, c| {
+            d.shadow(vec![gpui::BoxShadow {
+                color: alpha(c, 0.45),
+                offset: point(px(0.), px(0.)),
+                blur_radius: px(14.),
+                spread_radius: px(0.),
+                inset: false,
+            }])
+        })
+        .when(!on, |d| d.hover(|s| s.border_color(rgb(0x4a4a55))))
+        // Set and waiting: the LED strip along its foot.
+        .when_some(color.filter(|_| !on && h >= 26.0), |d, c| {
+            d.child(
+                div()
+                    .absolute()
+                    .bottom(px(4.))
+                    .left(px(8.))
+                    .right(px(8.))
+                    .h(px(2.))
+                    .rounded(px(1.))
+                    .bg(rgb(c)),
+            )
+        })
+        .when_some(detail.filter(|_| h >= 34.0), |d, t| {
+            d.child(
+                div()
+                    .absolute()
+                    .top(px(4.))
+                    .right(px(6.))
+                    .text_size(px(8.5))
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .text_color(match on {
+                        true => alpha(0x0c0c0f, 0.75),
+                        false => alpha(fg, 0.75),
+                    })
+                    .child(t),
+            )
+        })
         .child(label.into())
 }

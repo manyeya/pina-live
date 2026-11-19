@@ -727,6 +727,40 @@ impl Live {
             None => "—".into(),
         };
         let d = &self.decks[i];
+        // Under the count: the phrase it's in and the bars left of it (what's coming), else
+        // what it's doing (slipping, reversed), else what the count is.
+        let now = self.deck_seconds(i);
+        let grid = d.analysis.as_ref().and_then(|a| a.grid);
+        let phrase = d.analysis.as_ref().and_then(|a| {
+            a.phrases
+                .iter()
+                .find(|p| (p.start as f64) <= now && now < p.end as f64)
+        });
+        let below: (String, u32) = match (s.slip && !s.shadow.is_nan(), s.reverse, phrase, grid) {
+            (true, ..) => ("SLIPPING".into(), AMBER),
+            (_, true, ..) => ("REVERSE".into(), RECORD),
+            (_, _, Some(p), Some(g)) => {
+                let bar = 60.0 / g.bpm * per;
+                let left = ((p.end as f64 - now) / bar).ceil().max(1.0);
+                let name: String = p.name.to_uppercase().chars().take(9).collect();
+                (
+                    format!("{name} −{left}"),
+                    crate::wave::phrase_color(&p.name),
+                )
+            }
+            _ if beat.is_some() => ("BAR · BEAT".into(), TEXT_4),
+            _ if loaded => ("TIME LEFT".into(), TEXT_4),
+            _ => ("NO TRACK".into(), TEXT_4),
+        };
+        let jog = Jog {
+            color,
+            beat,
+            turn,
+            touched,
+            loaded,
+            shadow: (s.slip && !s.shadow.is_nan())
+                .then(|| (s.shadow / self.rate / SECONDS_PER_TURN).rem_euclid(1.0) as f32),
+        };
         // The ring centred in what's over keylock and slip, which sit at the bottom.
         div()
             .relative()
@@ -767,66 +801,12 @@ impl Live {
                                 canvas(
                                     move |b, _, _| bounds.set(b),
                                     move |b, _, window, _| {
-                                        let c = b.center();
-                                        let r = f32::from(b.size.width) / 2.0 - 6.0;
-                                        let at = |a: f32, rr: f32| -> Point<Pixels> {
-                                            point(c.x + px(rr * a.cos()), c.y + px(rr * a.sin()))
-                                        };
-                                        if touched {
-                                            window.paint_quad(
-                                                gpui::fill(
-                                                    gpui::Bounds::centered_at(
-                                                        c,
-                                                        gpui::size(px(r * 2.0), px(r * 2.0)),
-                                                    ),
-                                                    alpha(color, 0.08),
-                                                )
-                                                .corner_radii(px(r)),
-                                            );
-                                        }
-                                        let tau = std::f32::consts::TAU;
-                                        let now16 = beat.map(|b| b.rem_euclid(16.0) as f32);
-                                        for k in 0..16 {
-                                            let a0 = k as f32 / 16.0 * tau - tau / 4.0 + 0.035;
-                                            let a1 =
-                                                (k + 1) as f32 / 16.0 * tau - tau / 4.0 - 0.035;
-                                            let w = if k % 4 == 0 { 7.0 } else { 5.0 };
-                                            let fill = match now16 {
-                                                Some(n) if n.floor() as usize == k => {
-                                                    rgb(color).into()
-                                                }
-                                                Some(n) if (k as f32) < n.floor() => {
-                                                    alpha(color, 0.35)
-                                                }
-                                                _ => gpui::Hsla::from(rgb(RAISED)),
-                                            };
-                                            let mut p = PathBuilder::stroke(px(w));
-                                            p.move_to(at(a0, r));
-                                            p.arc_to(
-                                                point(px(r), px(r)),
-                                                px(0.),
-                                                false,
-                                                true,
-                                                at(a1, r),
-                                            );
-                                            if let Ok(p) = p.build() {
-                                                window.paint_path(p, fill);
-                                            }
-                                        }
-                                        // No grid: a mark turning with the track instead.
-                                        if now16.is_none() && loaded {
-                                            let a = turn * tau - tau / 4.0;
-                                            let mut p = PathBuilder::stroke(px(3.));
-                                            p.move_to(at(a, r * 0.55));
-                                            p.line_to(at(a, r - 10.0));
-                                            if let Ok(p) = p.build() {
-                                                window.paint_path(p, rgb(TEXT));
-                                            }
-                                        }
+                                        paint_jog(window, b, &jog);
                                     },
                                 )
                                 .size_full(),
                             )
+                            // Its screen: where it is in the bar, and in the song.
                             .child(
                                 div()
                                     .absolute()
@@ -839,19 +819,22 @@ impl Live {
                                     .child(
                                         div()
                                             .font_family(MONO)
-                                            .text_size(px(24.))
+                                            .text_size(px((size * 0.13).clamp(15.0, 26.0)))
                                             .font_weight(FontWeight::SEMIBOLD)
                                             .text_color(rgb(if loaded { TEXT } else { TEXT_4 }))
                                             .child(center),
                                     )
-                                    .child(div().text_size(px(10.)).text_color(rgb(TEXT_3)).child(
-                                        match (s.slip && !s.shadow.is_nan(), s.reverse) {
-                                            (true, _) => "slipping",
-                                            (_, true) => "reverse",
-                                            _ if beat.is_some() => "bar . beat",
-                                            _ => "time left",
-                                        },
-                                    )),
+                                    .child(
+                                        div()
+                                            .max_w(px(size * 0.42))
+                                            .whitespace_nowrap()
+                                            .overflow_hidden()
+                                            .font_family(MONO)
+                                            .text_size(px(8.5))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(rgb(below.1))
+                                            .child(below.0),
+                                    ),
                             ),
                     ),
             )
@@ -863,83 +846,102 @@ impl Live {
                     .items_center()
                     .gap(px(6.))
                     .child(probe(&self.probes, format!("deck{i}.body.ringrow")))
-                    .child(self.keylock_button(i, d.keylock, true, cx))
+                    .child(self.keylock_button(i, d.keylock, cx))
                     .child(self.slip_button(i, d.slip, cx)),
             )
     }
 
-    fn keylock_button(&self, i: usize, on: bool, words: bool, cx: &mut Context<Self>) -> Div {
-        let b = match words {
-            true => seg("Keylock", on, 26.0).child(icon(Icon::Lock, 13.).text_color(rgb(if on {
-                ACCENT_TEXT
-            } else {
-                TEXT_3
-            }))),
-            false => icon_seg(Icon::Lock, on, 28.0),
-        };
-        b.when(on, |d| d.text_color(rgb(ACCENT_TEXT)))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |live, _, _, cx| {
-                    let on = !live.decks[i].keylock;
-                    live.decks[i].keylock = on;
-                    live.act(i, DeckCmd::Keylock(on));
-                    cx.notify();
-                }),
-            )
+    /// KEYLOCK, a key lit blue while the key holds whatever the tempo.
+    fn keylock_button(&self, i: usize, on: bool, cx: &mut Context<Self>) -> Div {
+        use crate::hw::{Led, key};
+        key(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(5.))
+                .child("KEYLOCK")
+                .child(icon(Icon::Lock, 11.).text_color(rgb(if on { TEXT } else { TEXT_3 }))),
+            if on { Led::On(ACCENT) } else { Led::Off },
+            false,
+            32.0,
+            9.0,
+        )
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |live, _, _, cx| {
+                let on = !live.decks[i].keylock;
+                live.decks[i].keylock = on;
+                live.act(i, DeckCmd::Keylock(on));
+                cx.notify();
+            }),
+        )
     }
 
+    /// SLIP, lit amber while the track carries on underneath what's done to it.
     fn slip_button(&self, i: usize, on: bool, cx: &mut Context<Self>) -> Div {
-        seg("Slip", on, 26.0)
-            .border_1()
-            .border_color(rgb(if on { AMBER } else { LINE }))
-            .when(on, |d| d.text_color(rgb(AMBER)))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |live, _, _, cx| {
-                    let on = !live.decks[i].slip;
-                    live.decks[i].slip = on;
-                    live.act(i, DeckCmd::Slip(on));
-                    cx.notify();
-                }),
-            )
+        use crate::hw::{Led, key};
+        key(
+            "SLIP",
+            if on { Led::On(AMBER) } else { Led::Off },
+            false,
+            32.0,
+            9.0,
+        )
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |live, _, _, cx| {
+                let on = !live.decks[i].slip;
+                live.decks[i].slip = on;
+                live.act(i, DeckCmd::Slip(on));
+                cx.notify();
+            }),
+        )
     }
 
+    /// The pads' modes, as a controller's: a key each, lit in its pads' colour when it's the one.
     fn pad_tabs(&self, i: usize, cx: &mut Context<Self>) -> Div {
+        use crate::hw::{Led, key};
         let mode = self.decks[i].pads;
         if self.four {
             return self.pad_dropdown(i, mode, cx);
         }
-        let tab = |label: &'static str, m: Pads, cx: &mut Context<Self>| {
-            seg(label, mode == m, 24.0)
-                .flex_1()
-                .min_w(px(0.))
-                .px(px(4.))
-                .overflow_hidden()
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |live, _, _, cx| {
-                        live.decks[i].pads = m;
-                        cx.notify();
-                    }),
-                )
+        let short = self.narrow || self.card_w < 540.0;
+        let tab = |label: &'static str, m: Pads, color: u32, cx: &mut Context<Self>| {
+            key(
+                label,
+                if mode == m { Led::On(color) } else { Led::Off },
+                false,
+                32.0,
+                4.0,
+            )
+            .flex_1()
+            .min_w(px(0.))
+            .overflow_hidden()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |live, _, _, cx| {
+                    live.decks[i].pads = m;
+                    cx.notify();
+                }),
+            )
         };
-        tray()
+        div()
+            .relative()
+            .flex()
+            .gap(px(4.))
             .child(tab(
-                if self.narrow { "Cue" } else { "Hot Cue" },
+                if short { "CUE" } else { "HOT CUE" },
                 Pads::HotCue,
+                AMBER,
                 cx,
             ))
-            .child(tab("Loop", Pads::Loop, cx))
-            .child(tab("Roll", Pads::Roll, cx))
+            .child(tab("LOOP", Pads::Loop, MINT, cx))
+            .child(tab("ROLL", Pads::Roll, TEAL, cx))
+            .child(tab("JUMP", Pads::Jump, SKY, cx))
             .child(tab(
-                if self.narrow { "Jmp" } else { "Jump" },
-                Pads::Jump,
-                cx,
-            ))
-            .child(tab(
-                if self.narrow { "Stem" } else { "Stems" },
+                if short { "STEM" } else { "STEMS" },
                 Pads::Stems,
+                PINK,
                 cx,
             ))
             .child(mark(&self.probes, format!("deck{i}.body.mid.tabsend")))
@@ -996,17 +998,43 @@ impl Live {
         div()
             .flex()
             .flex_col()
-            .child(dropdown(name, 26.0).on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |live, _, _, cx| {
-                    live.pad_menu = if live.pad_menu == Some(i) {
-                        None
-                    } else {
-                        Some(i)
+            // The mode as a key, lit in its pads' colour, opening the list.
+            .child(
+                {
+                    let color = match mode {
+                        Pads::HotCue => AMBER,
+                        Pads::Loop => MINT,
+                        Pads::Roll => TEAL,
+                        Pads::Jump => SKY,
+                        Pads::Stems => PINK,
                     };
-                    cx.notify();
-                }),
-            ))
+                    crate::hw::key(
+                        div()
+                            .w_full()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .child(name.to_uppercase())
+                            .child(icon(Icon::Chevron, 11.).text_color(rgb(TEXT_3))),
+                        crate::hw::Led::On(color),
+                        false,
+                        26.0,
+                        9.0,
+                    )
+                    .w_full()
+                }
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |live, _, _, cx| {
+                        live.pad_menu = if live.pad_menu == Some(i) {
+                            None
+                        } else {
+                            Some(i)
+                        };
+                        cx.notify();
+                    }),
+                ),
+            )
             .when(open, |d| {
                 d.child(
                     gpui::deferred(gpui::anchored().snap_to_window().child(menu)).with_priority(1),
@@ -1015,7 +1043,6 @@ impl Live {
     }
 
     fn pads(&self, i: usize, s: &DeckStatus, h: f32, cx: &mut Context<Self>) -> Div {
-        let four = self.narrow;
         let period = self.decks[i]
             .analysis
             .as_ref()
@@ -1032,12 +1059,9 @@ impl Live {
                 let p = match self.decks[i].pads {
                     Pads::HotCue => {
                         let set = !s.hot[k].is_nan();
-                        let label = match set && !four && self.card_w >= 500.0 {
-                            true => format!("{}  {}", k + 1, clock(s.hot[k] / self.rate, false)),
-                            false => format!("{}", k + 1),
-                        };
-                        pad(
-                            label,
+                        crate::controls::pad_with(
+                            format!("{}", k + 1),
+                            set.then(|| clock(s.hot[k] / self.rate, false)),
                             set.then_some(CUE_COLORS[k]),
                             self.holding(i, Hold::HotCue(k)),
                             h,
@@ -1081,7 +1105,7 @@ impl Live {
                         let b = JUMPS[k];
                         let label =
                             format!("{}{}", if b < 0.0 { "−" } else { "+" }, beats_text(b.abs()));
-                        pad(label, None, false, h).on_mouse_down(
+                        pad(label, Some(SKY), false, h).on_mouse_down(
                             MouseButton::Left,
                             cx.listener(move |live, _, _, cx| {
                                 live.act(i, DeckCmd::BeatJump(b));
@@ -1097,17 +1121,23 @@ impl Live {
         rows
     }
 
+    /// The loop, as a player's: IN (blinking while it waits for its OUT), OUT (lit while it
+    /// loops), halve, a display of its length (clicked, a loop that long; lit while it loops),
+    /// double, and RELOOP or EXIT.
     fn loop_row(&self, i: usize, s: &DeckStatus, cx: &mut Context<Self>) -> Div {
+        use crate::hw::{Led, display, key};
         let size = self.decks[i].loop_beats;
-        let tight = if self.narrow || self.card_w < 520.0 {
+        let kp = if self.narrow || self.card_w < 520.0 {
             6.0
         } else {
-            10.0
+            9.0
         };
+        let kh = 32.0;
         let on = s.loop_on && !s.roll;
         let set_in = !s.loop_in.is_nan();
-        let btn = |label: &'static str, lit: bool, cmd: fn() -> DeckCmd, cx: &mut Context<Self>| {
-            seg(label, lit, 26.0).px(px(tight)).on_mouse_down(
+        let blink = self.blink;
+        let act = |label: &'static str, led: Led, cmd: fn() -> DeckCmd, cx: &mut Context<Self>| {
+            key(label, led, false, kh, kp).on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |live, _, _, cx| {
                     live.act(i, cmd());
@@ -1116,7 +1146,7 @@ impl Live {
             )
         };
         let resize = move |by: f64, label: &'static str, cx: &mut Context<Self>| {
-            seg(label, false, 26.0).px(px(tight)).on_mouse_down(
+            key(label, Led::None, false, kh, kp).on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |live, _, _, cx| {
                     let b = (live.decks[i].loop_beats * by).clamp(1.0 / 32.0, 64.0);
@@ -1129,34 +1159,43 @@ impl Live {
             )
         };
         let four = self.narrow;
-        tray()
+        let in_led = match (on, set_in) {
+            (true, _) => Led::On(MINT),
+            (false, true) => Led::Blink(AMBER, blink),
+            _ => Led::Off,
+        };
+        div()
+            .h(px(ROW_H))
+            .flex()
+            .items_center()
+            .gap(px(4.))
             .when(!four, |t| {
-                t.child(btn("In", set_in, || DeckCmd::LoopIn, cx))
-                    .child(btn("Out", false, || DeckCmd::LoopOut, cx))
+                t.child(act("IN", in_led, || DeckCmd::LoopIn, cx))
+                    .child(act(
+                        "OUT",
+                        if on { Led::On(MINT) } else { Led::Off },
+                        || DeckCmd::LoopOut,
+                        cx,
+                    ))
             })
             .child(resize(0.5, "½", cx))
             .child(
-                div()
+                display(kh)
                     .flex_1()
                     .min_w(px(0.))
-                    .h(px(26.))
-                    .flex()
-                    .items_center()
                     .justify_center()
                     .gap(px(5.))
-                    .rounded(px(6.))
                     .cursor_pointer()
-                    .bg(rgb(if on { MINT } else { CARD }))
-                    .text_color(rgb(if on { 0x0c0c0f } else { TEXT_2 }))
-                    .font_family(MONO)
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_size(px(11.5))
-                    .child(icon(Icon::Loop, 13.).text_color(rgb(if on {
-                        0x0c0c0f
-                    } else {
-                        TEXT_3
-                    })))
-                    .child(beats_text(size))
+                    .when(on, |d| d.border_color(alpha(MINT, 0.6)))
+                    .child(icon(Icon::Loop, 13.).text_color(rgb(if on { MINT } else { TEXT_3 })))
+                    .child(
+                        div()
+                            .font_family(MONO)
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_size(px(13.))
+                            .text_color(rgb(if on { MINT } else { TEXT }))
+                            .child(beats_text(size)),
+                    )
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |live, _, _, cx| {
@@ -1167,9 +1206,9 @@ impl Live {
                     ),
             )
             .child(resize(2.0, "×2", cx))
-            .child(btn(
-                if on { "Exit" } else { "Reloop" },
-                false,
+            .child(act(
+                if on { "EXIT" } else { "RELOOP" },
+                if on { Led::On(MINT) } else { Led::Off },
                 || DeckCmd::Reloop,
                 cx,
             ))
@@ -1184,10 +1223,9 @@ impl Live {
         // Held, the track's nudged slower or faster (a twentieth), as a jog's edge does.
         let nudge = |by: f64, label: &'static str, cx: &mut Context<Self>| {
             let held = self.holding(i, Hold::Bend(by));
-            seg(label, held, 18.0)
+            crate::hw::key(label, crate::hw::Led::None, held, 18.0, 0.0)
                 .flex_1()
-                .justify_center()
-                .px(px(0.))
+                .pt(px(0.))
                 .font_family(MONO)
                 .text_size(px(11.))
                 .on_mouse_down(
@@ -1238,21 +1276,28 @@ impl Live {
                     .gap(px(5.))
                     .child(probe(&self.probes, format!("deck{i}.body.range")))
                     .child(
-                        seg(format!("±{}", (range * 100.0).round()), false, 20.0)
-                            .text_size(px(10.))
-                            .px(px(6.))
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(move |live, _, _, cx| {
-                                    let d = &mut live.decks[i];
-                                    let k = RANGES.iter().position(|&r| r == d.range).unwrap_or(0);
-                                    let v = d.fader / d.range;
-                                    d.range = RANGES[(k + 1) % RANGES.len()];
-                                    // The fader stays where it is; the tempo it means changes.
-                                    Ctl::Tempo(i).set(live, v as f32);
-                                    cx.notify();
-                                }),
-                            ),
+                        crate::hw::key(
+                            format!("±{}", (range * 100.0).round()),
+                            crate::hw::Led::None,
+                            false,
+                            20.0,
+                            6.0,
+                        )
+                        .pt(px(0.))
+                        .font_family(MONO)
+                        .text_size(px(10.))
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |live, _, _, cx| {
+                                let d = &mut live.decks[i];
+                                let k = RANGES.iter().position(|&r| r == d.range).unwrap_or(0);
+                                let v = d.fader / d.range;
+                                d.range = RANGES[(k + 1) % RANGES.len()];
+                                // The fader stays where it is; the tempo it means changes.
+                                Ctl::Tempo(i).set(live, v as f32);
+                                cx.notify();
+                            }),
+                        ),
                     )
                     // Compact, the key shift lives here (the transport has no room for it).
                     .when(compact, |d| d.child(self.key_steps(i, s, cx))),
@@ -1630,6 +1675,148 @@ impl Live {
                 ),
             )
     }
+}
+
+/// What a jog's drawn from: the deck's colour, the beat it's on (none without a grid), how far
+/// round the platter's turned, whether it's held, and where slip has the track underneath.
+pub struct Jog {
+    color: u32,
+    beat: Option<f64>,
+    turn: f32,
+    touched: bool,
+    loaded: bool,
+    shadow: Option<f32>,
+}
+
+/// A jog wheel, as a player's display draws one: a ridged rim; round it the phrase's sixteen
+/// beats as LEDs (the one playing lit, those gone by dim); a platter, lit from above and grooved,
+/// tinted while it's held; the needle turning with the track (an amber one where slip has it
+/// underneath); and a dark screen in the middle for the count.
+fn paint_jog(window: &mut gpui::Window, b: gpui::Bounds<Pixels>, j: &Jog) {
+    let c = b.center();
+    let rr = f32::from(b.size.width.min(b.size.height)) / 2.0;
+    let tau = std::f32::consts::TAU;
+    let at =
+        |a: f32, r: f32| -> Point<Pixels> { point(c.x + px(r * a.cos()), c.y + px(r * a.sin())) };
+    let disc = |window: &mut gpui::Window, r: f32, fill: gpui::Hsla| {
+        window.paint_quad(
+            gpui::fill(
+                gpui::Bounds::centered_at(c, gpui::size(px(r * 2.0), px(r * 2.0))),
+                fill,
+            )
+            .corner_radii(px(r)),
+        );
+    };
+    let circle = |window: &mut gpui::Window, r: f32, w: f32, color: gpui::Hsla| {
+        let mut p = PathBuilder::stroke(px(w));
+        p.move_to(at(0.0, r));
+        p.arc_to(
+            point(px(r), px(r)),
+            px(0.),
+            false,
+            true,
+            at(std::f32::consts::PI, r),
+        );
+        p.arc_to(point(px(r), px(r)), px(0.), false, true, at(0.0, r));
+        if let Ok(p) = p.build() {
+            window.paint_path(p, color);
+        }
+    };
+    let line = |window: &mut gpui::Window, a: f32, r0: f32, r1: f32, w: f32, color: gpui::Hsla| {
+        let mut p = PathBuilder::stroke(px(w));
+        p.move_to(at(a, r0));
+        p.line_to(at(a, r1));
+        if let Ok(p) = p.build() {
+            window.paint_path(p, color);
+        }
+    };
+    // The rim, ridged.
+    disc(window, rr - 0.5, rgb(0x0f0f13).into());
+    for k in 0..96 {
+        line(
+            window,
+            k as f32 / 96.0 * tau,
+            rr - 4.5,
+            rr - 1.0,
+            1.0,
+            alpha(0xffffff, 0.06),
+        );
+    }
+    // The beats round it.
+    let r_led = rr - 10.0;
+    let now16 = j.beat.map(|b| b.rem_euclid(16.0) as f32);
+    for k in 0..16 {
+        let a0 = k as f32 / 16.0 * tau - tau / 4.0 + 0.04;
+        let a1 = (k + 1) as f32 / 16.0 * tau - tau / 4.0 - 0.04;
+        let w = if k % 4 == 0 { 6.0 } else { 4.5 };
+        let fill: gpui::Hsla = match now16 {
+            Some(n) if n.floor() as usize == k => rgb(j.color).into(),
+            Some(n) if (k as f32) < n.floor() => alpha(j.color, 0.32),
+            _ => rgb(0x24242a).into(),
+        };
+        let mut p = PathBuilder::stroke(px(w));
+        p.move_to(at(a0, r_led));
+        p.arc_to(
+            point(px(r_led), px(r_led)),
+            px(0.),
+            false,
+            true,
+            at(a1, r_led),
+        );
+        if let Ok(p) = p.build() {
+            window.paint_path(p, fill);
+        }
+    }
+    // The platter: lit from above (rings lighter toward the middle), grooved.
+    let rp = rr - 16.0;
+    disc(window, rp, rgb(0x16161b).into());
+    disc(window, rp * 0.88, rgb(0x19191f).into());
+    disc(window, rp * 0.74, rgb(0x1c1c22).into());
+    for k in 0..7 {
+        circle(
+            window,
+            rp * (0.64 + k as f32 * 0.05),
+            1.0,
+            alpha(0xffffff, 0.022),
+        );
+    }
+    circle(window, rp, 1.0, alpha(0xffffff, 0.08));
+    if j.touched {
+        disc(window, rp, alpha(j.color, 0.12));
+    }
+    if j.loaded {
+        if let Some(t) = j.shadow {
+            line(
+                window,
+                t * tau - tau / 4.0,
+                rp * 0.62,
+                rp - 2.0,
+                2.0,
+                alpha(AMBER, 0.85),
+            );
+        }
+        let a = j.turn * tau - tau / 4.0;
+        line(window, a, rp * 0.62, rp - 2.0, 2.5, rgb(TEXT).into());
+        let tip = at(a, rp - 5.0);
+        window.paint_quad(
+            gpui::fill(
+                gpui::Bounds::centered_at(tip, gpui::size(px(5.), px(5.))),
+                rgb(TEXT),
+            )
+            .corner_radii(px(2.5)),
+        );
+    }
+    // The screen in the middle, sunk.
+    let rc = rp * 0.58;
+    window.paint_quad(
+        gpui::fill(
+            gpui::Bounds::centered_at(c, gpui::size(px(rc * 2.0), px(rc * 2.0))),
+            rgb(0x09090c),
+        )
+        .corner_radii(px(rc))
+        .border_widths(px(1.))
+        .border_color(rgb(0x26262d)),
+    );
 }
 
 /// A Camelot key moved `semis` semitones: seven places round the wheel a semitone.
