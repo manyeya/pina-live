@@ -2,6 +2,12 @@
 name = "pina-live-engine"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
 
 [dependencies]
 pina-engine.workspace = true

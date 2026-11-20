@@ -365,6 +365,11 @@ fn shots() {
                         .decks
                         .iter_mut()
                         .for_each(|d| d.pads = crate::live::Pads::Stems),
+                    "about" => live.show_about = true,
+                    "about-all" => {
+                        live.show_about = true;
+                        live.about_all = true;
+                    }
                     // The stem pads, deck A's track being parted.
                     "parting" => {
                         live.decks

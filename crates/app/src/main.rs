@@ -1,12 +1,14 @@
-//! Pina Live: DJ software on Pina Studio's engine.
+//! Pina Live: DJ software on Pina Studio's engine. By Manyeya Khutso Siema; MIT License.
 
 // A Windows release opens no console window behind it.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod about;
 mod analysis;
 mod browser;
 mod controls;
 mod crates;
+mod credits;
 mod decks;
 mod detail;
 mod fxbar;
@@ -62,7 +64,11 @@ fn run(app: gpui::Application) {
         live::bind_keys(cx);
         cx.on_action(|_: &Quit, cx| cx.quit());
         cx.set_menus([
-            Menu::new("Pina Live").items([MenuItem::action("Quit Pina Live", Quit)]),
+            Menu::new("Pina Live").items([
+                MenuItem::action("About Pina Live", About),
+                MenuItem::separator(),
+                MenuItem::action("Quit Pina Live", Quit),
+            ]),
             Menu::new("Library").items([
                 MenuItem::action("Add Music Folder…", AddFolder),
                 MenuItem::action("Find", FocusSearch),

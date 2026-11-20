@@ -2,6 +2,12 @@
 name = "pina-live"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
 
 [dependencies]
 pina-live-engine = { path = "../engine" }
@@ -24,6 +30,10 @@ wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = ["Window", "Document", "Element", "EventTarget", "Event", "DragEvent", "DataTransfer", "File", "FileList", "Blob", "HtmlInputElement", "Response", "Worker", "WorkerOptions", "WorkerType", "MessageEvent", "ErrorEvent"] }
+
+# Windows: the program's icon and details (company, copyright, description), from build.rs.
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
 
 [dev-dependencies]
 gpui = { package = "gpui-pre", version = "=0.3.9", features = ["test-support"] }

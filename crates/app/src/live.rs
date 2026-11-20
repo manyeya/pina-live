@@ -37,6 +37,7 @@ actions!(
     pina_live,
     [
         Quit,
+        About,
         AddFolder,
         FocusSearch,
         ToggleFour,
@@ -247,6 +248,9 @@ pub struct Live {
     /// The stem models panel open; a model coming down; what went wrong last; the model folder
     /// asked to be removed (a second click removes it).
     pub show_models: bool,
+    /// About Pina Live open; its list of every crate shown.
+    pub show_about: bool,
+    pub about_all: bool,
     pub download: Option<crate::models::Download>,
     pub model_note: Option<String>,
     pub remove_armed: Option<PathBuf>,
@@ -581,6 +585,8 @@ impl Live {
             settings: crate::settings::Settings::load(),
             show_settings: false,
             show_models: false,
+            show_about: false,
+            about_all: false,
             download: None,
             model_note: None,
             remove_armed: None,
@@ -1327,6 +1333,10 @@ impl Render for Live {
             })
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_action(cx.listener(|live, _: &AddFolder, _, cx| live.pick_folder(cx)))
+            .on_action(cx.listener(|live, _: &About, _, cx| {
+                live.show_about = true;
+                cx.notify();
+            }))
             .on_action(cx.listener(|live, _: &ToggleFour, _, cx| {
                 live.four = !live.four;
                 cx.notify();
@@ -1402,6 +1412,7 @@ impl Render for Live {
             })
             .when(self.show_settings, |d| d.child(self.settings_panel(cx)))
             .when(self.show_models, |d| d.child(self.models_panel(cx)))
+            .when(self.show_about, |d| d.child(self.about_panel(cx)))
             .children(self.menu_overlay(cx))
     }
 }

@@ -16,8 +16,18 @@
 AppId={{F7B01B57-4907-4564-94EB-BA39AB1809C5}
 AppName=Pina Live
 AppVersion={#Version}
-AppPublisher=Pina Studio
-AppPublisherURL=https://manyeya.github.io/pina-studio/#live
+AppPublisher=Manyeya Khutso Siema
+AppCopyright=Copyright (c) 2026 Manyeya Khutso Siema. MIT License.
+AppPublisherURL=https://manyeya.github.io/pina-studio/live/
+AppSupportURL=https://github.com/manyeya/pina-live/issues
+AppUpdatesURL=https://github.com/manyeya/pina-live/releases
+VersionInfoCompany=Manyeya Khutso Siema
+VersionInfoCopyright=Copyright (c) 2026 Manyeya Khutso Siema
+VersionInfoDescription=Pina Live installer
+VersionInfoProductName=Pina Live
+VersionInfoVersion={#Version}
+; The MIT License, shown before installing.
+LicenseFile={#Source}\LICENSE.txt
 DefaultDirName={autopf}\Pina Live
 DefaultGroupName=Pina Live
 DisableProgramGroupPage=yes
@@ -43,6 +53,9 @@ Source: "{#Source}\Pina Live.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; Visual C++'s redistributable, so it runs on a PC without it installed.
 Source: "{#Source}\*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\crates\app\icon\live.ico"; DestDir: "{app}"; Flags: ignoreversion
+; Its licence, and every open-source component's.
+Source: "{#Source}\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#Source}\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\Pina Live"; Filename: "{app}\Pina Live.exe"; IconFilename: "{app}\live.ico"

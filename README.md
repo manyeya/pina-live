@@ -4,7 +4,8 @@
 
 <p align="center">
   DJ software on <a href="https://github.com/manyeya/pina-studio">Pina Studio</a>'s engine.<br>
-  Pina Studio's sister app: one makes the music, the other plays it out.
+  Pina Studio's sister app: one makes the music, the other plays it out.<br>
+  By <b>Manyeya Khutso Siema</b>.
 </p>
 
 <p align="center">
@@ -344,3 +345,24 @@ To release:
 
 Pina Live's [page on the Pina website](https://manyeya.github.io/pina-studio/live/) picks up the new
 downloads by itself.
+
+## Author
+
+Pina Live is designed and written by **Manyeya Khutso Siema** ([github.com/manyeya](https://github.com/manyeya)):
+the decks, the mixer, the effects, the library, the browser build and the installers. Manyeya
+Khutso Siema also made [Pina Studio](https://github.com/manyeya/pina-studio), whose engine Pina
+Live plays through.
+
+## Licence
+
+Copyright (c) 2026 Manyeya Khutso Siema. Pina Live is licensed under the MIT License (`LICENSE`).
+
+It's built from many open-source projects, each under its own licence. `THIRD-PARTY-NOTICES.md`
+lists every one in its macOS, Windows and web builds with its licence's full text; the app lists
+them too (About Pina Live, in the app menu or in Settings). Pina Studio's engine brings the Rubber
+Band Library (GPL) and LAME (LGPL) along as dependencies, but nothing in Pina Live calls them, so
+neither is linked into Pina Live's builds.
+
+When a dependency changes, run `scripts/credits.py "Pina Live"` (the About page's list) and
+`scripts/notices.sh` (the notices; it needs `cargo install cargo-about --features cli`). A test
+fails if the credits fall behind `Cargo.lock`.

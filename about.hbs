@@ -1,0 +1,35 @@
+# Third-party notices
+
+{{!-- Made by scripts/notices.sh with cargo-about: don't edit it, run that again. --}}
+**Pina Live** is © 2026 Manyeya Khutso Siema, and licensed under the MIT License (`LICENSE`).
+It includes Pina Studio's engine, also © 2026 Manyeya Khutso Siema under the MIT License.
+
+That engine depends on the Rubber Band Library (GPL-2.0-or-later) and LAME (LGPL-3.0), listed
+below. Pina Live's builds don't include either: they're compiled along with the engine, but
+nothing in Pina Live calls them, so neither is linked into the program.
+
+It's built from the open-source software below. Their authors hold their copyrights; each is used
+under the licence it's listed under, whose full text follows the list of what uses it. The
+components that aren't Rust crates (fonts, icons, native libraries) are at the end.
+
+## Licences
+
+{{#each overview}}
+- [{{{name}}}](#{{id}}) ({{count}})
+{{/each}}
+- [Not Rust crates](#not-crates)
+
+{{#each licenses}}
+## {{{name}}}
+
+<a id="{{id}}"></a>Used by:
+
+{{#each used_by}}
+- [{{crate.name}} {{crate.version}}]({{#if crate.repository}}{{crate.repository}}{{else}}https://crates.io/crates/{{crate.name}}{{/if}})
+{{/each}}
+
+```text
+{{{text}}}
+```
+
+{{/each}}

@@ -300,13 +300,28 @@ impl Live {
                             .items_center()
                             .justify_between()
                             .child(div().text_size(px(15.)).font_weight(FontWeight::SEMIBOLD).child("Settings"))
-                            .child(icon_seg(Icon::Close, false, 26.0).on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(|live, _, _, cx| {
-                                    live.show_settings = false;
-                                    cx.notify();
-                                }),
-                            )),
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.))
+                                    // Who made it, and what it's built on (the menu's About, everywhere).
+                                    .child(button("About Pina Live", false).h(px(26.)).on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(|live, _, _, cx| {
+                                            live.show_settings = false;
+                                            live.show_about = true;
+                                            cx.notify();
+                                        }),
+                                    ))
+                                    .child(icon_seg(Icon::Close, false, 26.0).on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(|live, _, _, cx| {
+                                            live.show_settings = false;
+                                            cx.notify();
+                                        }),
+                                    )),
+                            ),
                     )
                     .when_some(self.audio_note.clone(), |d, note| {
                         d.child(div().pt(px(10.)).text_color(rgb(RECORD)).child(note))

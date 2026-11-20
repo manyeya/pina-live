@@ -5,10 +5,15 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+authors = ["Manyeya Khutso Siema"]
+license = "MIT"
+description = "DJ software on Pina Studio's engine, by Manyeya Khutso Siema"
+homepage = "https://manyeya.github.io/pina-studio/live/"
+repository = "https://github.com/manyeya/pina-live"
 
 [workspace.dependencies]
 # Pina Studio's engine: decoding, song study (tempo, key, form, loudness), its effects and stems.
-pina-engine = { git = "https://github.com/manyeya/pina-studio", rev = "d1a9ae74bd32e385ccbb5bece137ab5d6a4b1431" }
+pina-engine = { git = "https://github.com/manyeya/pina-studio", rev = "b1fc1ea56e9df3ff0349f1a1f7ca7d9af989a574" }
 
 # As Pina Studio: dependencies fast even in dev builds (gpui and DSP can't keep up unoptimized),
 # our own code with line numbers only.

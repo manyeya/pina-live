@@ -55,6 +55,7 @@ cat > "$INSTALLER/Contents/Info.plist" <<PLIST
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$VERSION</string>
+  <key>NSHumanReadableCopyright</key><string>© $(date +%Y) Manyeya Khutso Siema. MIT License.</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <!-- ONNX Runtime (stem separation), linked into Apple silicon's half, needs 13.4. -->
   <key>LSMinimumSystemVersionByArchitecture</key><dict><key>arm64</key><string>13.4</string><key>x86_64</key><string>13.0</string></dict>

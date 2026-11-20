@@ -14,6 +14,9 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/pina-live"
 cp crates/app/icon/live.icns "$APP/Contents/Resources/live.icns"
+# Its licence, and every open-source component's (scripts/notices.sh).
+cp LICENSE "$APP/Contents/Resources/LICENSE.txt"
+cp THIRD-PARTY-NOTICES.md "$APP/Contents/Resources/THIRD-PARTY-NOTICES.md"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -29,7 +32,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$VERSION</string>
-  <key>NSHumanReadableCopyright</key><string>© $YEAR Pina Studio</string>
+  <key>NSHumanReadableCopyright</key><string>© $YEAR Manyeya Khutso Siema. MIT License.</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSMinimumSystemVersionByArchitecture</key><dict><key>arm64</key><string>13.4</string><key>x86_64</key><string>13.0</string></dict>
   <key>LSApplicationCategoryType</key><string>public.app-category.music</string>

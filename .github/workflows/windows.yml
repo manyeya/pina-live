@@ -45,6 +45,9 @@ jobs:
             Sort-Object FullName -Descending
           if (-not ($crt | Where-Object Name -eq 'vcruntime140.dll')) { Write-Error "Visual C++'s runtime DLLs weren't found"; exit 1 }
           $crt | Group-Object Name | ForEach-Object { Copy-Item $_.Group[0].FullName staging\ }
+          # Its licence, and every open-source component's.
+          Copy-Item LICENSE staging\LICENSE.txt
+          Copy-Item THIRD-PARTY-NOTICES.md staging\
           Get-ChildItem staging
 
       # The installer (Inno Setup, in Pina Live's look), and a zip of the same for those who'd
