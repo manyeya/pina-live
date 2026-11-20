@@ -13,7 +13,8 @@ repository = "https://github.com/manyeya/pina-live"
 
 [workspace.dependencies]
 # Pina Studio's engine: decoding, song study (tempo, key, form, loudness), its effects and stems.
-pina-engine = { git = "https://github.com/manyeya/pina-studio", rev = "b1fc1ea56e9df3ff0349f1a1f7ca7d9af989a574" }
+# Without its lyrics (whisper.cpp): Pina Live doesn't hear words, so needn't build it.
+pina-engine = { git = "https://github.com/manyeya/pina-studio", rev = "976ae5b0b330935b375963b5b4e564e6969fbd33", default-features = false }
 
 # As Pina Studio: dependencies fast even in dev builds (gpui and DSP can't keep up unoptimized),
 # our own code with line numbers only.

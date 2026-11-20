@@ -208,13 +208,6 @@ pub const CRATES: &[Crate] = &[
         by: "Jyun-Yan You, Emilio Cobos Álvarez, Nick Fitzgerald and others",
     },
     Crate {
-        name: "bindgen",
-        version: "0.72.1",
-        license: "BSD-3-Clause",
-        url: "https://github.com/rust-lang/rust-bindgen",
-        by: "Jyun-Yan You, Emilio Cobos Álvarez, Nick Fitzgerald and others",
-    },
-    Crate {
         name: "bit-set",
         version: "0.11.1",
         license: "Apache-2.0 OR MIT",
@@ -402,13 +395,6 @@ pub const CRATES: &[Crate] = &[
         license: "MIT/Apache-2.0",
         url: "https://github.com/micahrj/clap-sys",
         by: "Micah Johnston, Robbert van der Helm <mail@robbertvanderhelm.nl",
-    },
-    Crate {
-        name: "cmake",
-        version: "0.1.58",
-        license: "MIT OR Apache-2.0",
-        url: "https://github.com/rust-lang/cmake-rs",
-        by: "Alex Crichton",
     },
     Crate {
         name: "cocoa",
@@ -927,13 +913,6 @@ pub const CRATES: &[Crate] = &[
         license: "MIT OR Apache-2.0",
         url: "https://github.com/servo/rust-url",
         by: "The rust-url developers",
-    },
-    Crate {
-        name: "fs_extra",
-        version: "1.3.0",
-        license: "MIT",
-        url: "https://github.com/webdesus/fs_extra",
-        by: "Denis Kurilenko",
     },
     Crate {
         name: "futures",
@@ -3209,20 +3188,6 @@ pub const CRATES: &[Crate] = &[
         license: "MIT OR Apache-2.0",
         url: "https://github.com/image-rs/weezl",
         by: "The image-rs Developers",
-    },
-    Crate {
-        name: "whisper-rs",
-        version: "0.16.0",
-        license: "Unlicense",
-        url: "https://codeberg.org/tazz4843/whisper-rs",
-        by: "",
-    },
-    Crate {
-        name: "whisper-rs-sys",
-        version: "0.15.0",
-        license: "Unlicense",
-        url: "https://codeberg.org/tazz4843/whisper-rs",
-        by: "",
     },
     Crate {
         name: "winnow",

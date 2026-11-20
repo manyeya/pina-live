@@ -13,16 +13,15 @@ components that aren't Rust crates (fonts, icons, native libraries) are at the e
 
 ## Licences
 
-- [MIT License](#MIT) (454)
+- [MIT License](#MIT) (443)
 - [Apache License 2.0](#Apache-2.0) (33)
 - [Unicode License v3](#Unicode-3.0) (20)
 - [Mozilla Public License 2.0](#MPL-2.0) (17)
-- [BSD 3-Clause "New" or "Revised" License](#BSD-3-Clause) (8)
+- [BSD 3-Clause "New" or "Revised" License](#BSD-3-Clause) (7)
 - [zlib License](#Zlib) (3)
 - [GNU General Public License v2.0 or later](#GPL-2.0-or-later) (2)
 - [ISC License](#ISC) (2)
 - [GNU Lesser General Public License v3.0 only](#LGPL-3.0) (2)
-- [The Unlicense](#Unlicense) (2)
 - [BSD 2-Clause "Simplified" License](#BSD-2-Clause) (1)
 - [Creative Commons Zero v1.0 Universal](#CC0-1.0) (1)
 - [Community Data License Agreement Permissive 2.0](#CDLA-Permissive-2.0) (1)
@@ -1678,7 +1677,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - [bindgen 0.70.1](https://github.com/rust-lang/rust-bindgen)
 - [bindgen 0.71.1](https://github.com/rust-lang/rust-bindgen)
-- [bindgen 0.72.1](https://github.com/rust-lang/rust-bindgen)
 
 ```text
 BSD 3-Clause License
@@ -3361,7 +3359,6 @@ DEALINGS IN THE SOFTWARE.
 - [backtrace 0.3.77](https://github.com/rust-lang/backtrace-rs)
 - [cc 1.11.2](https://github.com/rust-lang/cc-rs)
 - [cfg-if 1.0.5](https://github.com/rust-lang/cfg-if)
-- [cmake 0.1.58](https://github.com/rust-lang/cmake-rs)
 - [find-msvc-tools 0.1.15](https://github.com/rust-lang/cc-rs)
 - [js-sys 0.3.107](https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys)
 - [openssl-probe 0.2.2](https://github.com/rustls/openssl-probe)
@@ -6609,37 +6606,6 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 
 <a id="MIT"></a>Used by:
 
-- [fs_extra 1.3.0](https://github.com/webdesus/fs_extra)
-
-```text
-MIT License
-
-Copyright (c) 2017 Denis Kurilenko
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-```
-
-## MIT License
-
-<a id="MIT"></a>Used by:
-
 - [static_assertions 1.1.0](https://github.com/nvzqz/static-assertions-rs)
 
 ```text
@@ -7307,35 +7273,26 @@ SOFTWARE.
 - [seahash 4.1.0](https://gitlab.redox-os.org/redox-os/seahash)
 - [svg_fmt 0.4.5](https://github.com/nical/rust_debug)
 - [taffy 0.13.0](https://github.com/DioxusLabs/taffy)
-- [windows-collections 0.2.0](https://github.com/microsoft/windows-rs)
 - [windows-collections 0.3.2](https://github.com/microsoft/windows-rs)
 - [windows-core 0.57.0](https://github.com/microsoft/windows-rs)
-- [windows-core 0.61.2](https://github.com/microsoft/windows-rs)
 - [windows-core 0.62.2](https://github.com/microsoft/windows-rs)
-- [windows-future 0.2.1](https://github.com/microsoft/windows-rs)
 - [windows-future 0.3.2](https://github.com/microsoft/windows-rs)
 - [windows-implement 0.57.0](https://github.com/microsoft/windows-rs)
 - [windows-implement 0.60.2](https://github.com/microsoft/windows-rs)
 - [windows-interface 0.57.0](https://github.com/microsoft/windows-rs)
 - [windows-interface 0.59.3](https://github.com/microsoft/windows-rs)
-- [windows-link 0.1.3](https://github.com/microsoft/windows-rs)
 - [windows-link 0.2.1](https://github.com/microsoft/windows-rs)
-- [windows-numerics 0.2.0](https://github.com/microsoft/windows-rs)
 - [windows-numerics 0.3.1](https://github.com/microsoft/windows-rs)
 - [windows-registry 0.6.1](https://github.com/microsoft/windows-rs)
 - [windows-result 0.1.2](https://github.com/microsoft/windows-rs)
-- [windows-result 0.3.4](https://github.com/microsoft/windows-rs)
 - [windows-result 0.4.1](https://github.com/microsoft/windows-rs)
-- [windows-strings 0.4.2](https://github.com/microsoft/windows-rs)
 - [windows-strings 0.5.1](https://github.com/microsoft/windows-rs)
 - [windows-sys 0.48.0](https://github.com/microsoft/windows-rs)
 - [windows-sys 0.61.2](https://github.com/microsoft/windows-rs)
 - [windows-targets 0.48.5](https://github.com/microsoft/windows-rs)
 - [windows-targets 0.52.6](https://github.com/microsoft/windows-rs)
-- [windows-threading 0.1.0](https://github.com/microsoft/windows-rs)
 - [windows-threading 0.2.1](https://github.com/microsoft/windows-rs)
 - [windows 0.57.0](https://github.com/microsoft/windows-rs)
-- [windows 0.61.3](https://github.com/microsoft/windows-rs)
 - [windows 0.62.2](https://github.com/microsoft/windows-rs)
 - [windows_x86_64_msvc 0.48.5](https://github.com/microsoft/windows-rs)
 - [windows_x86_64_msvc 0.52.6](https://github.com/microsoft/windows-rs)
@@ -10206,59 +10163,6 @@ SPDX-License-Identifier: Unicode-3.0
 
 Portions of ICU4X may have been adapted from ICU4C and/or ICU4J.
 ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation and others.
-
-```
-
-## The Unlicense
-
-<a id="Unlicense"></a>Used by:
-
-- [whisper-rs 0.16.0](https://codeberg.org/tazz4843/whisper-rs)
-
-```text
-This is free and unencumbered software released into the public domain.
-
-Anyone is free to copy, modify, publish, use, compile, sell, or
-distribute this software, either in source code form or as a compiled
-binary, for any purpose, commercial or non-commercial, and by any
-means.
-
-In jurisdictions that recognize copyright laws, the author or authors
-of this software dedicate any and all copyright interest in the
-software to the public domain. We make this dedication for the benefit
-of the public at large and to the detriment of our heirs and
-successors. We intend this dedication to be an overt act of
-relinquishment in perpetuity of all present and future rights to this
-software under copyright law.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
-
-For more information, please refer to <https://unlicense.org>
-```
-
-## The Unlicense
-
-<a id="Unlicense"></a>Used by:
-
-- [whisper-rs-sys 0.15.0](https://codeberg.org/tazz4843/whisper-rs)
-
-```text
-This is free and unencumbered software released into the public domain.
-
-Anyone is free to copy, modify, publish, use, compile, sell, or distribute this software, either in source code form or as a compiled binary, for any purpose, commercial or non-commercial, and by any means.
-
-In jurisdictions that recognize copyright laws, the author or authors of this software dedicate any and all copyright interest in the software to the public domain. We make this dedication for the benefit of the public at large and to the detriment of our heirs and
-successors. We intend this dedication to be an overt act of relinquishment in perpetuity of all present and future rights to this software under copyright law.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-For more information, please refer to <http://unlicense.org/>
 
 ```
 
