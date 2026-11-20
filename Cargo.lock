@@ -4414,7 +4414,7 @@ dependencies = [
 
 [[package]]
 name = "pina-live"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures",
  "gpui-pre",
@@ -4437,7 +4437,7 @@ dependencies = [
 
 [[package]]
 name = "pina-live-engine"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cpal",
  "hound",
@@ -4452,7 +4452,7 @@ dependencies = [
 
 [[package]]
 name = "pina-live-installer"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "gpui-pre",
  "gpui-pre-apple",
