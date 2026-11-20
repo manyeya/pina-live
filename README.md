@@ -12,7 +12,7 @@
   &nbsp;·&nbsp;
   <a href="https://manyeya.github.io/pina-live/"><b>Open in your browser</b></a>
   &nbsp;·&nbsp;
-  <a href="https://manyeya.github.io/pina-studio/#live">Website</a>
+  <a href="https://manyeya.github.io/pina-studio/live/">Website</a>
 </p>
 
 ![Pina Live with two decks synced at 97.37 BPM: scrolling waveforms numbered by the bar, each deck's jog, pads and pitch fader, the mixer and crossfader between them, two beat FX units and the library below.](docs/decks.webp)
@@ -342,5 +342,5 @@ To release:
 1. Bump `version` in the workspace `Cargo.toml`.
 2. Tag the commit `vX.Y.Z` and push the tag.
 
-The [Pina Studio website](https://manyeya.github.io/pina-studio/#live) picks up the new
+Pina Live's [page on the Pina website](https://manyeya.github.io/pina-studio/live/) picks up the new
 downloads by itself.
