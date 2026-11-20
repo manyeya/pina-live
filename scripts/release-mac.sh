@@ -72,6 +72,7 @@ UNSIGNED=""
 # dmgbuild and Pillow (for the picture), in an environment of their own.
 VENV=target/dmgbuild-venv
 if [ ! -x "$VENV/bin/dmgbuild" ] || ! "$VENV/bin/python3" -c "import PIL" 2>/dev/null; then
+  rm -rf "$VENV"   # a stale one (CI's cache keeps target/, its Python may have moved) won't mend
   python3 -m venv "$VENV"
   "$VENV/bin/pip" install -q dmgbuild==1.6.5 pillow
 fi
