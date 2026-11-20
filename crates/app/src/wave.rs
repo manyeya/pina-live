@@ -294,14 +294,44 @@ fn columns(cols: &[[u8; 4]], a: isize, b: isize) -> Option<[u8; 4]> {
     Some(m)
 }
 
-/// One column of waveform at `x`, `half` tall either side of `mid`: each band at its weight,
-/// brought up by `fill`, and eased (a power under one) so quiet detail still shows.
-fn bands(window: &mut Window, x: f32, w: f32, mid: f32, half: f32, c: [u8; 4], a: f32, fill: f32) {
-    let hgt = |v: u8, b: usize| (Wave::level(v) * WEIGHTS[b] * fill).min(1.0).powf(0.8) * half;
-    let (lo, md, hi) = (hgt(c[1], 0), hgt(c[2], 1) * 0.8, hgt(c[3], 2) * 0.6);
-    quad(window, x, mid - lo, w, lo * 2.0, alpha(LOW, a));
-    quad(window, x, mid - md, w, md * 2.0, alpha(MID, a));
-    quad(window, x, mid - hi, w, hi * 2.0, alpha(HIGH, a));
+/// Columns of waveform, each band one shape: every column's bar two triangles of it. (Three
+/// quads a pixel column were tens of thousands a frame, each filed away by GPUI: most of what
+/// drawing the decks cost, and the pause coming back to them from the library.)
+#[derive(Default)]
+struct Bands([Option<gpui::Path<Pixels>>; 3]);
+
+impl Bands {
+    /// A column at `x`, `w` wide, `half` tall either side of `mid`: each band at its weight,
+    /// brought up by `fill`, and eased (a power under one) so quiet detail still shows.
+    fn column(&mut self, x: f32, w: f32, mid: f32, half: f32, c: [u8; 4], fill: f32) {
+        let hgt = |v: u8, b: usize| (Wave::level(v) * WEIGHTS[b] * fill).min(1.0).powf(0.8) * half;
+        let heights = [hgt(c[1], 0), hgt(c[2], 1) * 0.8, hgt(c[3], 2) * 0.6];
+        let p = |x: f32, y: f32| point(gpui::px(x), gpui::px(y));
+        // Solid: no curve to shade.
+        let st = (point(0., 1.), point(0., 1.), point(0., 1.));
+        for (band, h) in self.0.iter_mut().zip(heights) {
+            if h < 0.05 {
+                continue;
+            }
+            let (a, b, c, d) = (
+                p(x, mid - h),
+                p(x + w, mid - h),
+                p(x + w, mid + h),
+                p(x, mid + h),
+            );
+            let path = band.get_or_insert_with(|| gpui::Path::new(a));
+            path.push_triangle((a, b, c), st);
+            path.push_triangle((a, c, d), st);
+        }
+    }
+
+    fn paint(self, window: &mut Window, a: f32) {
+        for (path, color) in self.0.into_iter().zip([LOW, MID, HIGH]) {
+            if let Some(path) = path {
+                window.paint_path(path, alpha(color, a));
+            }
+        }
+    }
 }
 
 fn paint_scrolling(v: &View, b: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
@@ -345,14 +375,16 @@ fn paint_scrolling(v: &View, b: Bounds<Pixels>, window: &mut Window, cx: &mut Ap
     }
     if let Some(wave) = &v.wave {
         let cols = &wave.cols;
+        let mut bands = Bands::default();
         for k in 0..w as usize {
             let t0 = v.now + (k as f64 - w as f64 / 2.0) * per_px;
             let c0 = (t0 * WAVE_PER_SECOND).floor() as isize;
             let c1 = (((t0 + per_px) * WAVE_PER_SECOND).floor() as isize).max(c0 + 1);
             if let Some(c) = columns(cols, c0, c1) {
-                bands(window, x0 + k as f32, 1.0, mid, half, c, 1.0, v.fill);
+                bands.column(x0 + k as f32, 1.0, mid, half, c, v.fill);
             }
         }
+        bands.paint(window, 1.0);
     }
     // The grid: bars full height, beats as ticks top and bottom.
     if let Some(g) = v.grid {
@@ -486,23 +518,18 @@ fn paint_overview(v: &View, b: Bounds<Pixels>, window: &mut Window, cx: &mut App
     }
     if let Some(wave) = &v.wave {
         let n = wave.cols.len() as f64;
+        let (mut played, mut ahead) = (Bands::default(), Bands::default());
         for k in 0..w as usize {
             let c0 = (k as f64 / w as f64 * n) as isize;
             let c1 = (((k + 1) as f64 / w as f64 * n) as isize).max(c0 + 1);
             if let Some(c) = columns(&wave.cols, c0, c1) {
-                let played = (x0 + k as f32) < play_x;
-                bands(
-                    window,
-                    x0 + k as f32,
-                    1.0,
-                    mid,
-                    half,
-                    c,
-                    if played { 0.4 } else { 0.95 },
-                    v.fill,
-                );
+                let x = x0 + k as f32;
+                let bands = if x < play_x { &mut played } else { &mut ahead };
+                bands.column(x, 1.0, mid, half, c, v.fill);
             }
         }
+        played.paint(window, 0.4);
+        ahead.paint(window, 0.95);
     }
     // Phrases along the bottom, a gap between each.
     for p in &v.phrases {
