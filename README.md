@@ -4,8 +4,7 @@
 
 <p align="center">
   DJ software on <a href="https://github.com/manyeya/pina-studio">Pina Studio</a>'s engine.<br>
-  Pina Studio's sister app: one makes the music, the other plays it out.<br>
-  By <b>Manyeya Khutso Siema</b>.
+  Pina Studio's sister app: one makes the music, the other plays it out.
 </p>
 
 <p align="center">
@@ -345,13 +344,6 @@ To release:
 
 Pina Live's [page on the Pina website](https://manyeya.github.io/pina-studio/live/) picks up the new
 downloads by itself.
-
-## Author
-
-Pina Live is designed and written by **Manyeya Khutso Siema** ([github.com/manyeya](https://github.com/manyeya)):
-the decks, the mixer, the effects, the library, the browser build and the installers. Manyeya
-Khutso Siema also made [Pina Studio](https://github.com/manyeya/pina-studio), whose engine Pina
-Live plays through.
 
 ## Licence
 

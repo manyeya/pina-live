@@ -7,7 +7,7 @@ version = "0.1.1"
 edition = "2024"
 authors = ["Manyeya Khutso Siema"]
 license = "MIT"
-description = "DJ software on Pina Studio's engine, by Manyeya Khutso Siema"
+description = "DJ software on Pina Studio's engine"
 homepage = "https://manyeya.github.io/pina-studio/live/"
 repository = "https://github.com/manyeya/pina-live"
 

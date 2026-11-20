@@ -1,4 +1,4 @@
-//! Pina Live: DJ software on Pina Studio's engine. By Manyeya Khutso Siema; MIT License.
+//! Pina Live: DJ software on Pina Studio's engine.
 
 // A Windows release opens no console window behind it.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]

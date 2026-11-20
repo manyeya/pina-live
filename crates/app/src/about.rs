@@ -1,6 +1,5 @@
-//! About Pina Live: who made it, and the open-source software it's built on, credited. Pina Live
-//! is designed and written by Manyeya Khutso Siema, who made Pina Studio too. Every crate in it
-//! is listed (`credits.rs`, made from Cargo.lock by scripts/credits.py), and the projects it
+//! About Pina Live: who made it, and the open-source software it's built on, credited. Every
+//! crate in it is listed (`credits.rs`, made from Cargo.lock by scripts/credits.py), and the projects it
 //! leans on most are named first, with what each one does here.
 
 use std::sync::Arc;
@@ -29,7 +28,7 @@ const NOTICES: &str = "https://github.com/manyeya/pina-live/blob/main/THIRD-PART
 pub const BUILT_ON: &[(&str, &str, &str, &str)] = &[
     (
         "Pina Studio's engine",
-        "Decoding, the song study (beat, bar, key, phrases), the effects, the limiter and stem separation. Also by Manyeya Khutso Siema.",
+        "Decoding, the song study (beat, bar, key, phrases), the effects, the limiter and stem separation.",
         "MIT",
         "https://github.com/manyeya/pina-studio",
     ),
@@ -285,11 +284,6 @@ impl Live {
                             .flex_col()
                             .gap(px(6.))
                             .child(div().text_size(px(18.)).font_weight(FontWeight::SEMIBOLD).child(AUTHOR))
-                            .child(div().text_color(rgb(TEXT_2)).child(
-                                "Pina Live is designed and written by Manyeya Khutso Siema: the decks, the mixer, \
-                                 the effects, the library, the browser build and the installer. Manyeya Khutso Siema \
-                                 made Pina Studio too, and Pina Live plays through its engine.",
-                            ))
                             .child(
                                 div()
                                     .pt(px(6.))
