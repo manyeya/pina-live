@@ -92,7 +92,7 @@ waits.
 |---|---|---|
 | **macOS** | `PinaLive-<version>.dmg`: open it and run *Install Pina Live* | macOS 13 (13.4 on Apple silicon). Apple silicon or Intel |
 | **Windows** | `PinaLive-<version>-windows-x64-setup.exe`, a per-user installer (no administrator), or the zip | Windows x64 |
-| **Browser** | [manyeya.github.io/pina-live](https://manyeya.github.io/pina-live/). Drop tracks onto the page, or try the demo songs | A current Chrome or Edge |
+| **Browser** | [manyeya.github.io/pina-live](https://manyeya.github.io/pina-live/). Add a folder or drop tracks onto the page, or try the demo songs | A current Chrome or Edge |
 
 Every release is on the [releases page](https://github.com/manyeya/pina-live/releases).
 
@@ -276,7 +276,7 @@ browser can't do what the desktop does, it does it another way:
 | Drawing | GPUI: Metal on macOS, Direct3D 11 on Windows | GPUI on WebGPU |
 | Sound | cpal: Core Audio, WASAPI | cpal: Web Audio, started on the first click |
 | Keylock | Signalsmith Stretch (C++) | `wsola.rs`: WSOLA in Rust, with a fixed latency like Signalsmith's |
-| Tracks | Watched folders | Files dropped or picked, held in memory (`memfs.rs`) |
+| Tracks | Watched folders | Folders picked or dropped (subfolders and all, as on the desktop) and tracks dropped, read from your disk only when needed and never uploaded |
 | Decoding and analysis | Threads | Two Web Workers running the same module (`web.rs`, `web/worker.js`): one decodes for the decks, one analyses |
 | Library | Kept between runs | Kept for the session |
 | Stems and recording | Yes | Desktop only |

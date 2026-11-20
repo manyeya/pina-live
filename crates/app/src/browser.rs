@@ -397,11 +397,7 @@ impl Live {
                 .text_color(rgb(TEXT_3))
                 .hover(|s| s.bg(rgb(CARD)).text_color(rgb(TEXT_2)))
                 .child(icon(Icon::Plus, 14.))
-                .child(if cfg!(target_family = "wasm") {
-                    "Add music…"
-                } else {
-                    "Add a folder…"
-                })
+                .child("Add a folder…")
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(|_, _, window, cx| {
@@ -681,17 +677,14 @@ impl Live {
                 .child(
                     div()
                         .text_color(rgb(TEXT_3))
-                        .child(match cfg!(target_family = "wasm") {
-                            true => "Drop your tracks onto the page, or pick them: every track's tempo, key and phrases are found as it comes in.",
-                            false => "Add the folders you keep it in: every track's tempo, key and phrases are found as it comes in.",
-                        }),
+                        .child("Add the folders you keep it in: every track's tempo, key and phrases are found as it comes in."),
                 )
                 .child(
                     div()
                         .flex()
                         .gap(px(8.))
                         .child(
-                            button(if cfg!(target_family = "wasm") { "Add music…" } else { "Add a folder…" }, true).on_mouse_down(
+                            button("Add a folder…", true).on_mouse_down(
                                 MouseButton::Left,
                                 cx.listener(|_, _, window, cx| window.dispatch_action(Box::new(crate::live::AddFolder), cx)),
                             ),
@@ -708,7 +701,7 @@ impl Live {
                         }),
                 )
                 .child(div().text_size(px(11.)).text_color(rgb(TEXT_4)).child(match cfg!(target_family = "wasm") {
-                    true => "MP3, WAV, FLAC, AIFF, M4A or Ogg: they stay in this page, never uploaded",
+                    true => "or drop folders and files anywhere here: they stay on your computer, never uploaded",
                     false => "or drop folders and files anywhere here",
                 }))
                 .into_any_element();

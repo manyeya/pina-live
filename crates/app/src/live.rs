@@ -312,19 +312,30 @@ impl Live {
     /// analysed; the first onto the first empty deck. Whether any came.
     #[cfg(target_family = "wasm")]
     fn take_web_files(&mut self, cx: &mut Context<Self>) -> bool {
+        let (files, folders) = crate::web::take_arrived();
+        // A folder's kept as the desktop keeps one: in the sidebar, its tracks under it.
+        for name in &folders {
+            self.add_folder(crate::web::path_of(name), cx);
+        }
         let mut ids = Vec::new();
-        for name in crate::web::take_arrived() {
+        for name in files {
             let path = crate::web::path_of(&name);
             if library::is_audio(&path) {
                 ids.push(self.lib.add_file(&path));
             }
         }
         if ids.is_empty() {
-            return false;
+            return !folders.is_empty();
         }
         self.queue_analysis(&ids);
+        self.lib_dirty = true;
+        self.browser.refresh(&self.lib);
+        // Loose tracks dropped in: the first onto a free deck. (A folder's just added, as on the
+        // desktop.)
         let free = (0..self.shown()).find(|&d| self.decks[d].track.is_none());
-        if let (Some(d), Some(&id)) = (free, ids.first()) {
+        if folders.is_empty()
+            && let (Some(d), Some(&id)) = (free, ids.first())
+        {
             self.load(d, id, cx);
         }
         true
@@ -1043,7 +1054,7 @@ impl Live {
     }
 
     fn pick_folder(&mut self, cx: &mut Context<Self>) {
-        // A browser has no folders: its file picker, for audio.
+        // In a browser, its folder picker (web.rs).
         #[cfg(target_family = "wasm")]
         {
             let _ = cx;
