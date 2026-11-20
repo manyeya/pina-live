@@ -426,16 +426,6 @@ impl Render for Installer {
                                     .text_color(rgb(TEXT_3))
                                     .child("Mix, cut and blend live, on Pina Studio's engine."),
                                 appear(now, 0.48, 0.6),
-                            ))
-                            // Its maker.
-                            .child(rise(
-                                div()
-                                    .pt(px(2.))
-                                    .text_size(px(11.5))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(rgb(TEXT_2))
-                                    .child("by Manyeya Khutso Siema"),
-                                appear(now, 0.56, 0.6),
                             )),
                     ),
             )
