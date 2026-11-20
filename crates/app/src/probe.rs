@@ -38,7 +38,7 @@ pub fn mark(p: &Probes, name: impl Into<String>) -> impl IntoElement {
     .h(gpui::px(0.))
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 /// Every probe that's outside the one holding it (by name: "a.b.c" in "a.b", else "a"), by more
 /// than half a pixel: what spills over, said.
 pub fn spills(p: &HashMap<String, Bounds<Pixels>>) -> Vec<String> {

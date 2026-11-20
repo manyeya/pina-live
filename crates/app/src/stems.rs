@@ -112,8 +112,8 @@ pub struct Job {
 }
 
 impl Job {
-    /// One that's a part of the way through and stays there (tests).
-    #[cfg(test)]
+    /// One that's a part of the way through and stays there (the Mac-only layout tests and shots).
+    #[cfg(all(test, target_os = "macos"))]
     pub fn stuck(id: u64, at: f32) -> Job {
         Job {
             id,

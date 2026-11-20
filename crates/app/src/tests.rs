@@ -3,10 +3,17 @@
 //! anything spilling out of its panel (with macOS's own type, headless), and drawn to PNGs to
 //! look at.
 
-use std::{path::PathBuf, sync::Arc, thread, time::Duration};
+use std::path::PathBuf;
+// The Mac-only tests' (layouts_fit, shots: drawn by the Metal renderer).
+#[cfg(target_os = "macos")]
+use std::{sync::Arc, thread, time::Duration};
 
-use gpui::{AppContext, px};
-use pina_live_engine::{deck::DeckCmd, engine::engine, library::Library, mixer::MixCmd};
+#[cfg(target_os = "macos")]
+use gpui::AppContext;
+use gpui::px;
+#[cfg(target_os = "macos")]
+use pina_live_engine::{deck::DeckCmd, mixer::MixCmd};
+use pina_live_engine::{engine::engine, library::Library};
 
 use crate::{controls::Ctl, live::Live};
 
