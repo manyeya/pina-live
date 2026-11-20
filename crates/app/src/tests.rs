@@ -365,6 +365,14 @@ fn shots() {
                         .decks
                         .iter_mut()
                         .for_each(|d| d.pads = crate::live::Pads::Stems),
+                    // The stem pads, deck A's track being parted.
+                    "parting" => {
+                        live.decks
+                            .iter_mut()
+                            .for_each(|d| d.pads = crate::live::Pads::Stems);
+                        let a = live.decks[0].track.unwrap_or_default();
+                        live.separating = Some(crate::stems::Job::stuck(a, 0.4));
+                    }
                     _ => {}
                 }
                 if page == "drop" {
